@@ -101,11 +101,11 @@
 **Dependencies:** Phase 3
 
 **Completion Criteria:**
-- [ ] All endpoints return correct JSON responses
-- [ ] `/search` returns top-10 ranked jobs with match scores in < 5 seconds
-- [ ] `/crawl` kicks off background task and returns immediately
-- [ ] Integration test: crawl → DB → search → ranked output
-- [ ] OpenAPI docs render without errors
+- [x] All endpoints return correct JSON responses
+- [x] `/search` returns top-10 ranked jobs with match scores in < 5 seconds
+- [x] `/crawl` kicks off background task and returns immediately
+- [x] Integration test: crawl → DB → search → ranked output
+- [x] OpenAPI docs render without errors
 
 ---
 
@@ -163,3 +163,14 @@
 - Full pipeline (21 jobs: load → embed → index → search → score → format) runs in ~500ms after model is cached.
 
 **Files created:** `embeddings/__init__.py`, `embeddings/embedder.py`, `embeddings/vector_store.py`, `embeddings/matcher.py`, `pipeline/__init__.py`, `pipeline/rank.py`, `tests/test_embedder.py`, `tests/test_vector_store.py`, `tests/test_rank.py`
+
+### Phase 4 – FastAPI Backend *(2026-07-03)*
+
+**Insights:**
+- FastAPI's `TestClient` uses a thread pool to run sync endpoints, which caused `sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread`. Fix: pass `check_same_thread=False` when creating test connections.
+- CORS restricted to `localhost:5173` (Vite default) — frontend will be Phase 5.
+- `DATABASE_PATH` env var (default `jobs.db`) worked cleanly — `api/dependencies.py` reads it at call time, but `api/routes/search.py` and `api/routes/crawl.py` have it as a module-level constant (evaluated at import time). Tests mock the downstream functions instead of fighting import order.
+- Pydantic v2 models auto-generate the OpenAPI schema — `/docs` renders fully without any manual config.
+- `BackgroundTasks` is sufficient for fire-and-forget crawling in MVP — no Celery/Redis needed.
+
+**Files created:** `api/__init__.py`, `api/main.py`, `api/models.py`, `api/dependencies.py`, `api/routes/__init__.py`, `api/routes/jobs.py`, `api/routes/search.py`, `api/routes/crawl.py`, `tests/conftest.py`, `tests/test_api_jobs.py`, `tests/test_api_search.py`, `tests/test_api_crawl.py`

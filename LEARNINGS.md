@@ -57,3 +57,11 @@
 *Learning:* Auto-detecting the dimension from data in `build()` is simpler and less error-prone. When we had `FAISSVectorStore(dimension=384)`, both the tests and `pipeline/rank.py` needed to pass this parameter. After refactoring `__init__` to take no arguments and `build()` to call `embeddings.shape[1]`, we had to update 10 test call sites and 1 production call site that still passed `dimension=384`. The root cause was a disconnect between `__init__` (which stored `dimension` redundantly) and `build()` (which also set `self.dimension`). The fix: remove the constructor parameter, let `build()` always derive dimension from data.
 
 *Next:* If we ever add a `dimension` validation or config system, consider reading it from a `ModelConfig` dataclass rather than re-introducing it to `__init__`.
+
+---
+
+*Issue:* Why does `sqlite3.ProgrammingError: SQLite objects created in a thread can only be used in that same thread` occur in FastAPI tests?
+
+*Learning:* FastAPI's `TestClient` runs sync endpoint functions in a thread pool via `anyio.to_thread.run_sync`. When the test creates a `sqlite3.Connection` in the main thread and passes it to the endpoint (via dependency override), the endpoint runs in a different thread. SQLite connections default to `check_same_thread=True`, which raises `ProgrammingError` when the connection is used from a different thread. The fix: pass `check_same_thread=False` when creating the connection in test fixtures. This is safe because we never share connections across threads concurrently.
+
+*Next:* Consider using a connection pool or creating connections per-request in the real `get_db` dependency (it already does this). The issue only applies to test dependency overrides where a pre-created connection is injected. For production, `sqlite3.connect()` in `get_db()` creates a fresh connection per request in the same thread the endpoint runs in, so the problem doesn't arise.

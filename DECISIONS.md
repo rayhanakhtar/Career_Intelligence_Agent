@@ -85,3 +85,31 @@
 **Cons:** Empty index assumes 384 — technically brittle if a different model is used. Mitigated by the fact that we only use all-MiniLM-L6-v2 and an empty index is only used as a sentinel.
 
 **Future:** If we support multiple embedding models, restore the `dimension` parameter or read it from a config/model registry.
+
+---
+
+### Decision #7: FastAPI with BackgroundTasks over Celery for async crawling
+
+**Decision:** Use FastAPI's built-in `BackgroundTasks` for the `POST /crawl` endpoint rather than Celery or an external task queue.
+
+**Alternatives:** Celery + Redis (production-grade, persistent queue, task status tracking); `asyncio.create_task` (runs in event loop, no thread isolation).
+
+**Pros:** Zero infrastructure (no Redis, no worker processes), built into FastAPI, simple API (`background_tasks.add_task`), sufficient for MVP scale (<100 concurrent crawl requests).
+
+**Cons:** No persistence (tasks lost on server restart), no task status/history tracking, no retry mechanism, tasks run in the same process (block the event loop thread pool).
+
+**Future:** Add a `task_status` table in SQLite and a `GET /tasks/{id}` endpoint for status tracking. Migrate to Celery if crawl volume exceeds ~100 concurrent requests.
+
+---
+
+### Decision #8: CORS restricted to localhost:5173
+
+**Decision:** Set `allow_origins=["http://localhost:5173"]` on the CORS middleware.
+
+**Alternatives:** `allow_origins=["*"]` (easier for testing, security risk); no CORS (frontend won't work).
+
+**Pros:** Secure by default — only the Vite dev server can call the API. Prevents accidental exposure in development.
+
+**Cons:** Must add production origins before deployment. Phase 5 (React frontend) runs on port 5173 by default.
+
+**Future:** Read `ALLOWED_ORIGINS` from env var for production deployment.
