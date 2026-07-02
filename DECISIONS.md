@@ -71,3 +71,17 @@
 **Cons:** Requires SQLite 3.24+ (available in Python 3.11+). Slightly more verbose SQL than `INSERT OR IGNORE`.
 
 **Future:** The auto-increment integer `id` doubles as the FAISS index position in Phase 3 — no re-indexing needed when rows are UPSERTed since `id` stays stable.
+
+---
+
+### Decision #6: FAISSVectorStore auto-detects dimension instead of requiring it at construction
+
+**Decision:** Removed the `dimension` parameter from `FAISSVectorStore.__init__()`. The dimension is now auto-detected from the embedding array passed to `build()`. An empty build falls back to 384 (all-MiniLM-L6-v2's default).
+
+**Alternatives:** Keep `dimension=384` as a constructor argument; pass dimension to both `__init__` and `build()`.
+
+**Pros:** Simplifies the API (no redundant parameter), avoids mismatches between declared and actual dimension, the dimension is inherently known from the data.
+
+**Cons:** Empty index assumes 384 — technically brittle if a different model is used. Mitigated by the fact that we only use all-MiniLM-L6-v2 and an empty index is only used as a sentinel.
+
+**Future:** If we support multiple embedding models, restore the `dimension` parameter or read it from a config/model registry.

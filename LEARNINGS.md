@@ -49,3 +49,11 @@
 *Learning:* `ON CONFLICT(company, title) DO UPDATE` (UPSERT) is the best choice for our use case. `INSERT OR IGNORE` silently drops duplicates, leaving stale data in place. `INSERT OR REPLACE` deletes and re-inserts, which resets the auto-increment `id` and loses the `created_at` timestamp. UPSERT preserves `created_at` while refreshing all other fields — exactly what we want when re-crawling a company's career page. The auto-increment `id` stays stable, which is critical for Phase 3's FAISS integration where `id` doubles as the vector index position.
 
 *Next:* Implement a `fetch_and_store(db_path, board_token)` function in the crawlers that calls `insert_job()` directly, skipping the JSON file intermediary. This allows both pipelines to coexist — JSON for debugging, SQLite for persistence.
+
+---
+
+*Issue:* Should `FAISSVectorStore` accept the embedding dimension in `__init__` or auto-detect it?
+
+*Learning:* Auto-detecting the dimension from data in `build()` is simpler and less error-prone. When we had `FAISSVectorStore(dimension=384)`, both the tests and `pipeline/rank.py` needed to pass this parameter. After refactoring `__init__` to take no arguments and `build()` to call `embeddings.shape[1]`, we had to update 10 test call sites and 1 production call site that still passed `dimension=384`. The root cause was a disconnect between `__init__` (which stored `dimension` redundantly) and `build()` (which also set `self.dimension`). The fix: remove the constructor parameter, let `build()` always derive dimension from data.
+
+*Next:* If we ever add a `dimension` validation or config system, consider reading it from a `ModelConfig` dataclass rather than re-introducing it to `__init__`.

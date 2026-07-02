@@ -78,11 +78,11 @@
 **Dependencies:** Phase 2
 
 **Completion Criteria:**
-- [ ] Model loads and embeds 100 job descriptions in under 30 seconds on CPU
-- [ ] FAISS index correctly returns nearest neighbors (spot-check with known similar text)
-- [ ] Resume matching produces plausible scores (manual review of top-5)
-- [ ] Unit tests for embedder, matcher, and rank functions
-- [ ] No cloud APIs used — all inference is local
+- [x] Model loads and embeds 100 job descriptions in under 30 seconds on CPU
+- [x] FAISS index correctly returns nearest neighbors (spot-check with known similar text)
+- [x] Resume matching produces plausible scores (manual review of top-5)
+- [x] Unit tests for embedder, matcher, and rank functions
+- [x] No cloud APIs used — all inference is local
 
 ---
 
@@ -153,3 +153,13 @@
 - Using `python -m database.import` (not `python database/import.py`) ensures package imports resolve correctly.
 
 **Files created:** `database/__init__.py`, `database/schema.py`, `database/crud.py`, `database/import.py`, `tests/test_crud.py`
+
+### Phase 3 – Semantic Layer *(2026-07-03)*
+
+**Insights:**
+- After the FAISSVectorStore was refactored to auto-detect dimension from data in `build()`, all call sites (both production and test) needed to stop passing `dimension=384` to the constructor.
+- The sentence-transformers model (`all-MiniLM-L6-v2`) loads once per process via a module-level singleton — the first `embed()` call is slow (~12s download/unpack), but subsequent calls are fast.
+- FAISS `IndexFlatIP` with pre-normalized vectors gives the same results as cosine similarity, avoiding an extra L2 normalization step at search time.
+- Full pipeline (21 jobs: load → embed → index → search → score → format) runs in ~500ms after model is cached.
+
+**Files created:** `embeddings/__init__.py`, `embeddings/embedder.py`, `embeddings/vector_store.py`, `embeddings/matcher.py`, `pipeline/__init__.py`, `pipeline/rank.py`, `tests/test_embedder.py`, `tests/test_vector_store.py`, `tests/test_rank.py`
