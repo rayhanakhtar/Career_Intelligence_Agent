@@ -36,11 +36,11 @@
 **Dependencies:** Phase 0
 
 **Completion Criteria:**
-- [ ] 5+ companies successfully crawled (at least 3 Greenhouse, 2 Lever)
-- [ ] Raw job output validated (title, location, description, apply URL present)
-- [ ] ATS detector correctly identifies known URL patterns
-- [ ] Unit tests for parser functions (mock API responses)
-- [ ] All HTTP errors handled gracefully (timeout, 4xx, 5xx)
+- [x] 5+ companies successfully crawled (at least 3 Greenhouse, 2 Lever)
+- [x] Raw job output validated (title, location, description, apply URL present)
+- [x] ATS detector correctly identifies known URL patterns
+- [x] Unit tests for parser functions (mock API responses)
+- [x] All HTTP errors handled gracefully (timeout, 4xx, 5xx)
 
 ---
 
@@ -133,4 +133,13 @@
 
 ## Completed
 
-*(Move completed phases here and add insights gained.)*
+### Phase 1 – MVP Crawlers *(2026-07-02)*
+
+**Insights:**
+- Greenhouse API (`boards-api.greenhouse.io`) works reliably with no auth needed. Board token is the key variable.
+- Lever API (`api.lever.co/v0/postings/{company}?mode=json`) has inconsistent company slug naming. Some companies return empty/404 — handled gracefully.
+- ATS detection via URL patterns alone covers ~80% of cases. Two-layer cascade (URL → HTML) proved sufficient for Phase 1.
+- `responses` library makes HTTP mocking clean and deterministic for unit tests.
+- The `_KEYWORD_CLUES` layer was removed as redundant — all entries overlapped with `_META_CLUES` when checking full page HTML.
+
+**Files created:** `crawlers/__init__.py`, `crawlers/ats_detector.py`, `crawlers/utils.py`, `crawlers/greenhouse.py`, `crawlers/lever.py`, `tests/test_ats_detector.py`, `tests/test_utils.py`, `tests/test_greenhouse.py`, `tests/test_lever.py`, `data/sample_resume.txt`, `data/sample_greenhouse.json`, `.gitignore`, `requirements.txt`
