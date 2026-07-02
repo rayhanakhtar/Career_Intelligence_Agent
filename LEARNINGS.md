@@ -41,3 +41,11 @@
 *Learning:* Lever's public API (`api.lever.co/v0/postings/{company}?mode=json`) uses company slugs that don't always match the company's brand name. For example, "google", "dropbox", and "segment" all returned 404. The "lever" test company returned an empty array, confirming the endpoint works. A company's actual Lever slug must be verified manually or discovered from its career page URL (`jobs.lever.co/{slug}`).
 
 *Next:* When building the company discovery module, extract the Lever slug from each company's career page URL rather than guessing it. The `ats_detector.py` module already extracts the slug pattern from URLs.
+
+---
+
+*Issue:* Should we use `INSERT OR IGNORE`, `INSERT OR REPLACE`, or `ON CONFLICT DO UPDATE` for handling duplicate job rows?
+
+*Learning:* `ON CONFLICT(company, title) DO UPDATE` (UPSERT) is the best choice for our use case. `INSERT OR IGNORE` silently drops duplicates, leaving stale data in place. `INSERT OR REPLACE` deletes and re-inserts, which resets the auto-increment `id` and loses the `created_at` timestamp. UPSERT preserves `created_at` while refreshing all other fields — exactly what we want when re-crawling a company's career page. The auto-increment `id` stays stable, which is critical for Phase 3's FAISS integration where `id` doubles as the vector index position.
+
+*Next:* Implement a `fetch_and_store(db_path, board_token)` function in the crawlers that calls `insert_job()` directly, skipping the JSON file intermediary. This allows both pipelines to coexist — JSON for debugging, SQLite for persistence.

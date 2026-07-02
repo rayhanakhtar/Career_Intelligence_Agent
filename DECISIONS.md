@@ -57,3 +57,17 @@
 **Cons:** Slightly less granular confidence scoring — full HTML text check and meta-tag check now both return 0.7. Acceptable for MVP.
 
 **Future:** If finer granularity is needed later, re-introduce keyword matching by checking only `<meta>` tags for the 0.7 layer and full body text for 0.3.
+
+---
+
+### Decision #5: SQLite UPSERT over INSERT OR IGNORE for dedup
+
+**Decision:** Use `INSERT ... ON CONFLICT(company, title) DO UPDATE` (UPSERT) for handling duplicate job records, rather than `INSERT OR IGNORE` or application-level dedup.
+
+**Alternatives:** `INSERT OR IGNORE` (silently drops duplicates, keeps stale data); `INSERT OR REPLACE` (deletes and re-inserts, loses `created_at` timestamp); application-level dedup via SELECT-then-INSERT (race condition prone, extra round-trip).
+
+**Pros:** UPSERT preserves the original `created_at` timestamp while refreshing all other fields (location, description, posted_at, etc.). Single SQL statement, atomic, no race conditions. Crawlers can re-crawl the same company without creating noise.
+
+**Cons:** Requires SQLite 3.24+ (available in Python 3.11+). Slightly more verbose SQL than `INSERT OR IGNORE`.
+
+**Future:** The auto-increment integer `id` doubles as the FAISS index position in Phase 3 — no re-indexing needed when rows are UPSERTed since `id` stays stable.

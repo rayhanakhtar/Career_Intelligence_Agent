@@ -57,10 +57,10 @@
 **Dependencies:** Phase 1
 
 **Completion Criteria:**
-- [ ] Schema enforces deduplication (UNIQUE constraint on company + title)
-- [ ] Repeated crawl of same company does not create duplicate rows
-- [ ] CRUD functions have unit tests with in-memory SQLite
-- [ ] All jobs from Phase 1 imported into DB without data loss
+- [x] Schema enforces deduplication (UNIQUE constraint on company + title)
+- [x] Repeated crawl of same company does not create duplicate rows
+- [x] CRUD functions have unit tests with in-memory SQLite
+- [x] All jobs from Phase 1 imported into DB without data loss
 
 ---
 
@@ -143,3 +143,13 @@
 - The `_KEYWORD_CLUES` layer was removed as redundant — all entries overlapped with `_META_CLUES` when checking full page HTML.
 
 **Files created:** `crawlers/__init__.py`, `crawlers/ats_detector.py`, `crawlers/utils.py`, `crawlers/greenhouse.py`, `crawlers/lever.py`, `tests/test_ats_detector.py`, `tests/test_utils.py`, `tests/test_greenhouse.py`, `tests/test_lever.py`, `data/sample_resume.txt`, `data/sample_greenhouse.json`, `.gitignore`, `requirements.txt`
+
+### Phase 2 – SQLite Storage *(2026-07-03)*
+
+**Insights:**
+- SQLite `ON CONFLICT DO UPDATE` (UPSERT) is cleaner than `INSERT OR IGNORE` — preserves `created_at` while refreshing other fields.
+- In-memory SQLite (`:memory:`) is lightweight and fast for unit tests; no file cleanup needed.
+- Auto-increment integer `id` doubles as a natural FAISS index position (prep for Phase 3).
+- Using `python -m database.import` (not `python database/import.py`) ensures package imports resolve correctly.
+
+**Files created:** `database/__init__.py`, `database/schema.py`, `database/crud.py`, `database/import.py`, `tests/test_crud.py`
