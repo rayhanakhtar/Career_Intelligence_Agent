@@ -15,11 +15,34 @@ from embeddings.vector_store import FAISSVectorStore
 
 logger = logging.getLogger(__name__)
 
+LOCATION_BOOST: float = 1.5
+
+
+def _apply_location_boost(
+    ranked: list[dict[str, Any]],
+    preferred_locations: list[str],
+) -> None:
+    """Apply a score multiplier to jobs whose location matches preferred locations.
+
+    Mutates the ``match_score`` of matching entries in place.
+
+    Args:
+        ranked: List of job records with a ``match_score`` key.
+        preferred_locations: Location strings to match against job locations.
+    """
+    for job in ranked:
+        job_location = job.get("location", "").lower()
+        for pref in preferred_locations:
+            if pref.lower() in job_location:
+                job["match_score"] = round(job["match_score"] * LOCATION_BOOST, 1)
+                break
+
 
 def rank_jobs(
     db_path: str,
     resume_text: str,
     top_k: int = 10,
+    preferred_locations: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run the full ranking pipeline: load, embed, search, score, return.
 
@@ -27,6 +50,9 @@ def rank_jobs(
         db_path: Path to the SQLite database file.
         resume_text: Raw resume text to match against.
         top_k: Number of top results to return.
+        preferred_locations: Optional list of location strings to boost
+            (e.g. ``["Bengaluru", "Electronic City"]``). Matching jobs get a
+            score multiplier of ``LOCATION_BOOST`` (1.5x).
 
     Returns:
         A list of job record dictionaries enriched with a ``match_score`` key,
@@ -82,6 +108,9 @@ def rank_jobs(
         enriched["match_score"] = round(match_score, 1)
         ranked.append(enriched)
 
+    if preferred_locations:
+        _apply_location_boost(ranked, preferred_locations)
+
     ranked.sort(key=lambda j: j["match_score"], reverse=True)
     return ranked
 
@@ -132,6 +161,12 @@ def main() -> None:
         default=10,
         help="Number of top matches to return (default: 10)",
     )
+    parser.add_argument(
+        "--locations",
+        type=str,
+        default="",
+        help="Comma-separated preferred locations for boosting (e.g. Bengaluru,Electronic City)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -151,8 +186,14 @@ def main() -> None:
         print("Error: resume file is empty")
         sys.exit(1)
 
-    # Run ranking pipeline.
-    ranked = rank_jobs(db_path=args.db, resume_text=resume_text, top_k=args.top_k)
+    locations = [loc.strip() for loc in args.locations.split(",") if loc.strip()] or None
+
+    ranked = rank_jobs(
+        db_path=args.db,
+        resume_text=resume_text,
+        top_k=args.top_k,
+        preferred_locations=locations,
+    )
 
     if not ranked:
         print("No matches found.")

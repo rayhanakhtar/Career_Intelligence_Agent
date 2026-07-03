@@ -31,6 +31,7 @@ class SearchRequest(BaseModel):
 
     resume_text: str
     top_k: int = 10
+    locations: list[str] | None = None
 
 
 class SearchResponse(BaseModel):
@@ -51,6 +52,27 @@ class CrawlResponse(BaseModel):
 
     task_id: str
     status: str
+
+
+class CrawlAllRequest(BaseModel):
+    """Request body for the /crawl/all endpoint (currently empty — reserved for future filters)."""
+
+    pass
+
+
+class CrawlAllResponse(BaseModel):
+    """Response returned by the /crawl/all endpoint."""
+
+    task_id: str
+    status: str
+
+
+class CrawlAllResultResponse(BaseModel):
+    """Summary of per-company crawl results."""
+
+    task_id: str
+    status: str
+    results: dict[str, int]
 
 
 class ErrorResponse(BaseModel):

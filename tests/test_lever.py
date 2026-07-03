@@ -2,7 +2,11 @@
 
 import responses
 
-from crawlers.lever import fetch_jobs, _build_job_record
+from crawlers.lever import (
+    LeverCrawler,
+    fetch_jobs,
+    _build_job_record,
+)
 
 
 SAMPLE_LEVER_RESPONSE = [
@@ -121,3 +125,60 @@ class TestLeverFetchJobs:
         )
         jobs = fetch_jobs("weird")
         assert jobs == []
+
+
+class TestLeverCrawlerClass:
+    """Tests for the LeverCrawler class."""
+
+    def test_platform_classvar(self):
+        """LeverCrawler.platform should be 'lever'."""
+        assert LeverCrawler.platform == "lever"
+
+    def test_constructor_sets_attributes(self):
+        """The constructor should store company_id, display_name, board_token, locations."""
+        crawler = LeverCrawler(
+            company_id="acme",
+            display_name="Acme Corp",
+            board_token="acme",
+            locations=["Bengaluru", "Mumbai"],
+        )
+        assert crawler.company_id == "acme"
+        assert crawler.display_name == "Acme Corp"
+        assert crawler.board_token == "acme"
+        assert crawler.locations == ["Bengaluru", "Mumbai"]
+
+    @responses.activate
+    def test_fetch_jobs_uses_display_name_for_company(self):
+        """The class fetch_jobs should set company to display_name not board_token."""
+        responses.get(
+            "https://api.lever.co/v0/postings/acme?mode=json",
+            status=200,
+            json=SAMPLE_LEVER_RESPONSE,
+        )
+        crawler = LeverCrawler(
+            company_id="acme",
+            display_name="Acme Corp",
+            board_token="acme",
+        )
+        jobs = crawler.fetch_jobs()
+        assert len(jobs) == 2
+        assert jobs[0]["company"] == "Acme Corp"
+        assert jobs[1]["company"] == "Acme Corp"
+        assert jobs[0]["source"] == "lever"
+
+    def test_from_registry_creates_crawler(self):
+        """from_registry should create a LeverCrawler from a registry entry."""
+        entry = {
+            "id": "acme",
+            "company": "Acme Corp",
+            "platform": "lever",
+            "board_token": "acme",
+            "enabled": True,
+            "locations": ["Bengaluru"],
+        }
+        crawler = LeverCrawler.from_registry(entry)
+        assert isinstance(crawler, LeverCrawler)
+        assert crawler.company_id == "acme"
+        assert crawler.display_name == "Acme Corp"
+        assert crawler.board_token == "acme"
+        assert crawler.locations == ["Bengaluru"]

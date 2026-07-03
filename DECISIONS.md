@@ -127,3 +127,87 @@
 **Cons:** Proxy only works in dev — production needs a real reverse proxy (nginx, or serve the built frontend from FastAPI as static files). The `/api` path prefix must be stripped via `rewrite` since the backend routes don't have an `/api` prefix.
 
 **Future:** For production, either serve the `frontend/dist/` folder as FastAPI static files, or deploy behind nginx that handles the reverse proxy and static file serving.
+
+---
+
+### Decision #10: Two-endpoint design for resume search (JSON vs file upload)
+
+**Decision:** Use separate `POST /search` (JSON body with `resume_text`) and `POST /search/upload` (multipart `resume_file`) endpoints instead of a single endpoint that accepts both.
+
+**Alternatives:** Single endpoint with `Content-Type` switching (infeasible — FastAPI can't mix `BaseModel` and `UploadFile` in the same endpoint); base64-encode the file in JSON (wasteful, client-unfriendly).
+
+**Pros:** Clean separation of concerns, standard REST patterns, each endpoint has a well-defined content type, no ambiguity for clients.
+
+**Cons:** Two endpoints to document and test; clients must choose the right one based on whether they have text or a file.
+
+---
+
+### Decision #11: Abstract Base Class + Registry for crawler architecture
+
+**Decision:** Refactored standalone `fetch_jobs()` functions into a class hierarchy rooted at `BaseCrawler(ABC)`, with a JSON-driven company registry and platform-to-class mapping.
+
+**Alternatives:** Keep standalone functions (no polymorphism, harder to extend); use a decorator-based registration system (cleverer but less discoverable).
+
+**Pros:** ABC enforces interface contract; registry provides a single source of truth for company config; `from_registry()` factory method keeps instantiation near the class; `build_crawlers()` enables "crawl all" with zero config.
+
+**Cons:** More boilerplate than standalone functions; two APIs coexist (legacy functions + new classes) for backward compatibility.
+
+---
+
+### Decision #12: Display name normalization in job records
+
+**Decision:** The class-based crawlers set `company` to the display name from the registry (e.g. "Bosch"), while the legacy standalone functions continue to use the board token (e.g. "boschglobalsof").
+
+**Alternatives:** Change the legacy functions too (breaks backward compat); store both internal ID and display name in the DB (extra column, migration needed).
+
+**Pros:** Users see clean company names in the UI/API; backward compat maintained for existing DB records and tests; clear separation between old and new behavior.
+
+**Cons:** DB may contain a mix of token-based and display-name-based company values if both code paths are used.
+
+---
+
+### Decision #13: Workday API via POST with pagination
+
+**Decision:** Implement the Workday crawler using the `POST /wday/cxs/{subdomain}/{tenant}/jobs` API with JSON body containing `limit`, `offset`, and `searchText`, rather than scraping the HTML career page.
+
+**Alternatives:** Scrape the HTML career page with BeautifulSoup (fragile, JS-rendered); use Playwright (heavy, overkill for Workday's stable API).
+
+**Pros:** Workday's REST API is well-documented, returns clean JSON, supports pagination natively, no JS rendering needed.
+
+**Cons:** Requires knowing the tenant name and subdomain (not just a URL); uses POST instead of GET (slightly different from Greenhouse/Lever).
+
+---
+
+### Decision #14: Dispatcher with isolated error handling
+
+**Decision:** In `crawl_all()`, wrap each crawler's `fetch_jobs()` call in a try/except so one failing crawler doesn't abort the entire batch.
+
+**Alternatives:** Let exceptions propagate and fail fast (simpler, but loses results from other companies); use `asyncio.gather(return_exceptions=True)` (async rewrite needed).
+
+**Pros:** Resilient — a single company's career page timeout doesn't block the other 20+ companies; per-company error logging.
+
+**Cons:** Silent failures if logging is not monitored; no retry mechanism for transient failures.
+
+---
+
+### Decision #15: Custom scrapers with BeautifulSoup over Playwright by default
+
+**Decision:** Implement all 10 custom scrapers using `requests` + BeautifulSoup for HTML parsing, with Playwright as a future fallback only for JS-heavy pages.
+
+**Alternatives:** Use Playwright for all scrapers (heavy, slow, extra dependency); use raw regex parsing (brittle).
+
+**Pros:** Fast (no browser overhead), lightweight, no extra dependency for most scrapers; BeautifulSoup handles the 80% case well; PlaywrightPool is ready for the remaining 20%.
+
+**Cons:** Some career pages require JS rendering — those will need Playwright integration later; HTML selectors may break if the company redesigns its career portal.
+
+---
+
+### Decision #16: PlaywrightPool with lazy import and semaphore concurrency
+
+**Decision:** Wrap Playwright in a pool that lazy-imports the library, uses `asyncio.Semaphore` for concurrency control (max 3 browsers), and returns `None` gracefully if Playwright is not installed.
+
+**Alternatives:** Import Playwright eagerly (breaks the app if not installed); use `asyncio.Queue` for browser management (more complex).
+
+**Pros:** Playwright is truly optional — the app works without it; graceful degradation; semaphore is Python-idiomatic for limiting concurrent async resource usage; singleton pattern matches the embedding model.
+
+**Cons:** Async-only API (sync code needs `asyncio.run()`); browser instances consume ~200 MB RAM each.

@@ -25,3 +25,14 @@ export interface CrawlResponse {
   task_id: string;
   status: string;
 }
+
+export interface CrawlAllResponse {
+  task_id: string;
+  status: string;
+}
+
+export interface CrawlAllResultResponse {
+  task_id: string;
+  status: string;
+  results: Record<string, number>;
+}

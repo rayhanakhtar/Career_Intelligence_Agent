@@ -73,3 +73,59 @@
 *Learning:* Without a `rewrite` option, Vite's proxy forwards the full path — `/api/health` goes to `localhost:8000/api/health`, which doesn't match any FastAPI route. Adding `rewrite: (path) => path.replace(/^\/api/, "")` strips the `/api` prefix so the request hits `localhost:8000/health` instead. This is a common gotcha when the backend routes don't have a global `/api` prefix.
 
 *Next:* If the API grows, consider adding a global `/api/v1` prefix to all FastAPI routers, which would make the proxy config simpler (no rewrite needed).
+
+---
+
+*Issue:* How should location-aware ranking work — boost during embedding or after scoring?
+
+*Learning:* Apply location boost as a post-scoring multiplier (1.5x) rather than biasing the embedding. Embeddings capture semantic meaning; artificially altering them for location would distort the vector space. Post-scoring multiplication is transparent, easy to tune, and doesn't require re-embedding jobs when location preferences change.
+
+*Next:* Allow users to specify multiple locations; partial matching (e.g. "Bengaluru" matches "Electronic City, Bengaluru") proved user-friendly.
+
+---
+
+*Issue:* Designing the BaseCrawler ABC — should `from_registry` be a classmethod or an external factory?
+
+*Learning:* Making `from_registry` a classmethod on each `BaseCrawler` subclass keeps instantiation logic close to the class definition. Each subclass knows which registry fields it needs (e.g. `board_token` for Greenhouse, `subdomain`+`tenant` for Workday). This is cleaner than a central factory function that needs to know every subclass's constructor signature.
+
+*Next:* Ensure every crawler sets a `platform` ClassVar so the registry can map platform strings to classes.
+
+---
+
+*Issue:* Workday's API uses POST with JSON body — how to handle this when all other crawlers use GET?
+
+*Learning:* Workday's Jobs API is a POST endpoint that accepts `{"limit": 20, "offset": 0, "searchText": ""}`. Unlike Greenhouse/Lever (GET with simple URL params), Workday requires sending a JSON payload. The `_fetch_raw_page()` function handles this with `requests.post(url, json=payload)`. Pagination is handled by checking `total` vs `offset + len(jobPostings)`.
+
+*Next:* Add pagination limit parameter (default 20) as a class-level constant for easy tuning.
+
+---
+
+*Issue:* Should `crawl_all` fail fast on the first error or continue?
+
+*Learning:* Isolated error handling (try/except per crawler) is far more practical. When crawling 15+ companies, a single timeout shouldn't lose results from the other 14. Each crawler failure is logged but doesn't abort the batch. The summary dict only includes companies that returned jobs.
+
+*Next:* Add a `failed` list to the crawl-all result so users can see which companies errored.
+
+---
+
+*Issue:* How to handle custom career portals that use JavaScript rendering?
+
+*Learning:* The hybrid strategy (requests + BeautifulSoup by default, Playwright fallback) works well. Most career portals (Google, Amazon, Meta, etc.) serve their job listings in the initial HTML or embed JSON in `<script>` tags. Only a minority require full JS rendering. The PlaywrightPool is ready for those cases but isn't forced on every scraper.
+
+*Next:* For scrapers that fail with empty results, automatically fall back to PlaywrightPool. Track which pages need JS rendering in the company registry.
+
+---
+
+*Issue:* BeautifulSoup type stubs cause false-positive LSP errors with `get("href")` on tag attributes.
+
+*Learning:* BeautifulSoup's `Tag.get()` returns `str | None` but type stubs declare it as returning `_AttributeValue | None` (a generic type alias). This causes LSP errors like `Cannot access attribute "startswith" for class "AttributeValueList"`. These are false positives — at runtime, BeautifulSoup always returns plain strings for HTML attributes. The code works correctly despite the LSP warnings.
+
+*Next:* Consider adding `# type: ignore` comments on BeautifulSoup attribute access lines, or use a helper function that casts the return value.
+
+---
+
+*Issue:* The `_task_results` dict for crawl-all polling — why in-memory instead of in SQLite?
+
+*Learning:* An in-memory dict is simpler and faster for MVP. Results are ephemeral (lost on restart) but crawl-all is a fire-and-forget operation — the frontend polls until completion and then displays the results. Persistent storage would require a `crawl_tasks` table, periodic cleanup, and would add latency. For a production system, use Redis or a SQLite task table.
+
+*Next:* Add a `crawl_tasks` SQLite table with columns: task_id, status (running/completed/failed), results JSON, created_at, completed_at.

@@ -186,3 +186,185 @@
 **Files created:** `frontend/` (Vite scaffold), `frontend/src/types/index.ts`, `frontend/src/api/client.ts`, `frontend/src/components/Layout.tsx`, `frontend/src/components/SearchForm.tsx`, `frontend/src/components/CrawlForm.tsx`, `frontend/src/components/JobTable.tsx`
 
 **Files modified:** `.gitignore` (added frontend/node_modules/, frontend/dist/)
+
+---
+
+## Phase 6 – Location-Aware Ranking *(2026-07-03)*
+
+**Goal:** Add preferred-location boosting to the ranking pipeline so jobs in Bangalore/Electronic City rank higher for local job seekers.
+
+**Key Deliverables:**
+- `pipeline/rank.py` — `preferred_locations` parameter, `LOCATION_BOOST = 1.5`, `_apply_location_boost()` partial-match logic
+- `pipeline/search_service.py` — shared `search()` entry point for both text and file search
+- `api/routes/search.py` — pass `locations` through, add `POST /search/upload`
+- Frontend locations input field + file upload
+
+**Dependencies:** Phase 5
+
+**Completion Criteria:**
+- [x] Jobs with matching locations get 1.5x score boost
+- [x] Case-insensitive partial matching (e.g. "Bengaluru" matches "Electronic City, Bengaluru")
+- [x] Two-endpoint design (`POST /search` for JSON, `POST /search/upload` for file)
+- [x] Resume text extracted from PDF, DOCX, TXT
+- [x] All original tests plus 10+ new tests pass
+
+**Files created:** `pipeline/search_service.py`, `api/extractor.py`, `tests/test_search_service.py`, `tests/test_extractor.py`
+
+**Files modified:** `pipeline/rank.py`, `api/models.py`, `api/routes/search.py`, `requirements.txt`, `pyproject.toml`, `frontend/src/api/client.ts`, `frontend/src/components/SearchForm.tsx`, `frontend/src/App.tsx`, `tests/test_rank.py`, `tests/test_api_search.py`
+
+**Insights:**
+- FastAPI can't mix JSON + File in one endpoint due to Content-Type conflict → two-endpoint pattern
+- PyMuPDF (fitz) and python-docx handle PDF/DOCX extraction well
+- Location boosting is applied after semantic scoring, not during — avoids distorting the embedding space
+
+---
+
+## Phase 7 – Plugin Crawler Architecture + Company Registry *(2026-07-03)*
+
+**Goal:** Refactor standalone crawler functions into a class-based plugin architecture with an ABC, company registry, and platform class mapping.
+
+**Key Deliverables:**
+- `crawlers/base.py` — `BaseCrawler(ABC)` with `fetch_jobs()`, `from_registry()`, `platform` classvar
+- `data/companies.json` — company registry with id, display name, platform, token, locations
+- `crawlers/registry.py` — load/save/lookup, `build_crawlers()`, `register_crawler()`
+- Refactored `GreenhouseCrawler` and `LeverCrawler` classes (backward-compatible)
+
+**Dependencies:** Phase 6
+
+**Completion Criteria:**
+- [x] BaseCrawler ABC enforces `fetch_jobs()` on all subclasses
+- [x] Standalone `fetch_jobs()` functions preserved for backward compatibility
+- [x] Registry driven by `data/companies.json`
+- [x] `build_crawlers()` instantiates crawlers for all enabled companies
+- [x] Display name normalization (user sees "Bosch" not "boschglobalsof")
+- [x] 23 new tests covering base, registry, and class methods
+
+**Files created:** `crawlers/base.py`, `crawlers/registry.py`, `data/companies.json`, `tests/test_base_crawler.py`, `tests/test_registry.py`
+
+**Files modified:** `crawlers/__init__.py`, `crawlers/greenhouse.py`, `crawlers/lever.py`, `tests/test_greenhouse.py`, `tests/test_lever.py`
+
+**Insights:**
+- Backward compatibility was critical — existing tests import `fetch_jobs` and `_build_job_record` directly
+- Extracted `_fetch_raw_jobs()` helper so both standalone functions and class methods share the HTTP logic
+- `from_registry` classmethod keeps instantiation logic near the class definition
+
+---
+
+## Phase 8 – Workday ATS Crawler *(2026-07-03)*
+
+**Goal:** Add a Workday ATS crawler supporting pagination, enabling crawling for Microsoft, Deloitte, Uber, and other Workday-based career portals.
+
+**Key Deliverables:**
+- `crawlers/workday.py` — `WorkdayCrawler(BaseCrawler)` with paginated `POST` API
+- `_fetch_raw_page()` + `_fetch_all_raw_jobs()` for pagination
+- Added 4 Workday companies to registry (Microsoft, Deloitte, Uber, Target)
+
+**Dependencies:** Phase 7
+
+**Completion Criteria:**
+- [x] Paginated fetching (20 jobs per page, loops until all retrieved)
+- [x] Standard job record format (same as Greenhouse/Lever)
+- [x] `from_registry` factory with `subdomain` defaulting to `wd1`
+- [x] 10 new tests covering build_record, fetch_jobs, and class methods
+
+**Files created:** `crawlers/workday.py`, `tests/test_workday.py`
+
+**Files modified:** `crawlers/__init__.py`, `data/companies.json`
+
+**Insights:**
+- Workday uses a `POST` API (not GET) with JSON body — different from Greenhouse/Lever
+- `externalPath` is relative → must prepend the base careers URL
+- Categories are an array with `name` key (not a flat string)
+- Description can be either a dict with `text` key or a plain string
+
+---
+
+## Phase 9 – Dispatcher + Crawl All *(2026-07-03)*
+
+**Goal:** Build an orchestrator that runs all enabled crawlers from the registry and stores results, with a `POST /crawl/all` endpoint and frontend button.
+
+**Key Deliverables:**
+- `crawlers/dispatcher.py` — `crawl_all()` iterates over `build_crawlers()`, fetches + stores jobs
+- `POST /crawl/all` + `GET /crawl/all/{task_id}` API endpoints
+- Frontend "Crawl All" button with polling for results
+- In-memory task-result store for MVP
+
+**Dependencies:** Phase 7
+
+**Completion Criteria:**
+- [x] `crawl_all()` returns per-company job count summary
+- [x] Crawler exceptions don't crash the entire crawl
+- [x] API returns 202 immediately, pollable via GET
+- [x] Frontend shows per-company results after crawl completes
+- [x] 8 new tests covering dispatcher and API endpoints
+
+**Files created:** `crawlers/dispatcher.py`, `tests/test_dispatcher.py`, `tests/test_api_crawl_all.py`
+
+**Files modified:** `api/models.py`, `api/routes/crawl.py`, `frontend/src/types/index.ts`, `frontend/src/api/client.ts`, `frontend/src/components/CrawlForm.tsx`, `frontend/src/App.tsx`
+
+**Insights:**
+- Background task results stored in an in-memory dict (ephemeral — fine for MVP)
+- Frontend polls every 3s with a 60s timeout
+- Error isolation — one failing crawler doesn't block others
+- Build on top of existing `POST /crawl` — doesn't break backward compatibility
+
+---
+
+## Phase 10 – Custom Scrapers Tier 1 *(2026-07-03)*
+
+**Goal:** Implement 10 company-specific custom scrapers for companies with unique career portals (not behind standard ATS).
+
+**Key Deliverables:**
+- `crawlers/custom/` — directory with 10 custom scrapers
+- Each scraper: `BaseCrawler` subclass with HTML parsing via BeautifulSoup
+- Registered in `crawlers/__init__.py` and added to `data/companies.json`
+
+**Companies covered:** Google, Amazon, Meta, NVIDIA, IBM, Oracle, Cisco, Intel, Qualcomm, Apple
+
+**Dependencies:** Phase 7
+
+**Completion Criteria:**
+- [x] 10 custom crawler classes in `crawlers/custom/`
+- [x] Each implements `fetch_jobs()` + `from_registry()`
+- [x] All registered and added to companies.json
+- [x] 37 new tests covering construction, registry factory, and fetch (mocked)
+- [x] Backward compatible — all existing tests pass
+
+**Files created:** `crawlers/custom/__init__.py`, `crawlers/custom/google_careers.py`, `crawlers/custom/amazon_careers.py`, `crawlers/custom/meta_careers.py`, `crawlers/custom/nvidia_careers.py`, `crawlers/custom/ibm_careers.py`, `crawlers/custom/oracle_careers.py`, `crawlers/custom/cisco_careers.py`, `crawlers/custom/intel_careers.py`, `crawlers/custom/qualcomm_careers.py`, `crawlers/custom/apple_careers.py`, `tests/test_custom_scrapers.py`
+
+**Files modified:** `crawlers/__init__.py`, `data/companies.json`
+
+**Insights:**
+- Custom scrapers use a mix of HTML parsing (BeautifulSoup) and JSON-embedded data (ld+json, `__INITIAL_STATE__`)
+- Each company has a unique page structure — generic selectors cover the most common patterns
+- Many companies use Workday under the hood (NVIDIA, Adobe) but expose custom URLs — we still use the Workday API for those
+- Mocking HTTP responses is essential for reliable testing
+
+---
+
+## Phase 11 – Playwright Pool *(2026-07-03)*
+
+**Goal:** Provide a pooled Playwright browser manager for JS-heavy career pages, with graceful fallback when Playwright is not installed.
+
+**Key Deliverables:**
+- `crawlers/playwright_pool.py` — `PlaywrightPool` with max 3 concurrent browsers, semaphore-based concurrency
+- `scripts/setup.ps1` — Windows PowerShell setup script (venv, deps, Playwright, DB, registry check)
+- Module-level singleton via `get_pool()` / `close_pool()`
+
+**Dependencies:** Phase 7
+
+**Completion Criteria:**
+- [x] Lazy import — Playwright not required to import the module
+- [x] Returns `None` gracefully when Playwright is not installed
+- [x] Semaphore limits concurrent browser usage to `max_browsers`
+- [x] Singleton pattern for application-wide reuse
+- [x] 7 tests covering pool lifecycle and missing-Playwright fallback
+- [x] Setup script automates Windows deployment
+
+**Files created:** `crawlers/playwright_pool.py`, `scripts/setup.ps1`, `tests/test_playwright_pool.py`
+
+**Insights:**
+- Lazy import avoids import errors when Playwright is not installed
+- `asyncio.Semaphore` is the idiomatic Python approach for limiting concurrent async resource usage
+- Module-level singleton pattern matches the embedding model singleton pattern
+- Playwright navigation uses `"networkidle"` wait strategy for JS-rendered pages

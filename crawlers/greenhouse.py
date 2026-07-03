@@ -4,6 +4,7 @@ import json
 import logging
 from typing import Any
 
+from crawlers.base import BaseCrawler
 from crawlers.utils import get_with_retry
 
 logger = logging.getLogger(__name__)
@@ -11,12 +12,12 @@ logger = logging.getLogger(__name__)
 GREENHOUSE_API_BASE = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
 
 
-def _build_job_record(raw: dict[str, Any], board_token: str) -> dict[str, Any]:
+def _build_job_record(raw: dict[str, Any], company_name: str) -> dict[str, Any]:
     """Normalise a raw Greenhouse job dict into the standard job record format.
 
     Args:
         raw: A single job object from the Greenhouse API response.
-        board_token: The company's Greenhouse board token.
+        company_name: Value for the ``company`` field (token or display name).
 
     Returns:
         A standardised job record dictionary.
@@ -30,7 +31,7 @@ def _build_job_record(raw: dict[str, Any], board_token: str) -> dict[str, Any]:
 
     return {
         "title": raw.get("title", ""),
-        "company": board_token,
+        "company": company_name,
         "location": raw.get("location", {}).get("name", ""),
         "description": raw.get("content", ""),
         "apply_url": raw.get("absolute_url", ""),
@@ -42,15 +43,14 @@ def _build_job_record(raw: dict[str, Any], board_token: str) -> dict[str, Any]:
     }
 
 
-def fetch_jobs(board_token: str) -> list[dict[str, Any]]:
-    """Fetch all active jobs from a Greenhouse board.
+def _fetch_raw_jobs(board_token: str) -> list[dict[str, Any]]:
+    """Low-level: fetch raw job dicts from the Greenhouse API.
 
     Args:
-        board_token: The company's Greenhouse board token
-                     (e.g. "boschglobalsof" for Bosch).
+        board_token: The company's Greenhouse board token.
 
     Returns:
-        A list of standardised job record dictionaries.
+        A list of raw job dicts from the API, or empty list on failure.
     """
     url = GREENHOUSE_API_BASE.format(token=board_token)
     response = get_with_retry(url)
@@ -67,8 +67,21 @@ def fetch_jobs(board_token: str) -> list[dict[str, Any]]:
 
     jobs = data.get("jobs", [])
     logger.info("Fetched %d jobs from Greenhouse board '%s'", len(jobs), board_token)
+    return jobs
 
-    return [_build_job_record(job, board_token) for job in jobs]
+
+def fetch_jobs(board_token: str) -> list[dict[str, Any]]:
+    """Fetch all active jobs from a Greenhouse board.
+
+    Args:
+        board_token: The company's Greenhouse board token
+                     (e.g. "boschglobalsof" for Bosch).
+
+    Returns:
+        A list of standardised job record dictionaries.
+    """
+    raw_jobs = _fetch_raw_jobs(board_token)
+    return [_build_job_record(job, board_token) for job in raw_jobs]
 
 
 def fetch_and_save(board_token: str, output_path: str) -> int:
@@ -86,3 +99,32 @@ def fetch_and_save(board_token: str, output_path: str) -> int:
         json.dump(jobs, f, indent=2, ensure_ascii=False)
     logger.info("Saved %d jobs to %s", len(jobs), output_path)
     return len(jobs)
+
+
+class GreenhouseCrawler(BaseCrawler):
+    """Crawler for a specific company's Greenhouse ATS board."""
+
+    platform = "greenhouse"
+
+    def __init__(
+        self,
+        company_id: str,
+        display_name: str,
+        board_token: str,
+        locations: list[str] | None = None,
+    ) -> None:
+        super().__init__(company_id, display_name, locations)
+        self.board_token = board_token
+
+    def fetch_jobs(self) -> list[dict[str, Any]]:
+        raw_jobs = _fetch_raw_jobs(self.board_token)
+        return [_build_job_record(job, self.display_name) for job in raw_jobs]
+
+    @classmethod
+    def from_registry(cls, entry: dict[str, Any]) -> "GreenhouseCrawler":
+        return cls(
+            company_id=entry["id"],
+            display_name=entry["company"],
+            board_token=entry["board_token"],
+            locations=entry.get("locations", []),
+        )

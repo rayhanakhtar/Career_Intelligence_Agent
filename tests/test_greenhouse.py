@@ -3,7 +3,11 @@
 import json
 import responses
 
-from crawlers.greenhouse import fetch_jobs, _build_job_record
+from crawlers.greenhouse import (
+    GreenhouseCrawler,
+    fetch_jobs,
+    _build_job_record,
+)
 
 
 SAMPLE_GREENHOUSE_RESPONSE = {
@@ -116,3 +120,60 @@ class TestGreenhouseFetchJobs:
         )
         jobs = fetch_jobs("bad")
         assert jobs == []
+
+
+class TestGreenhouseCrawlerClass:
+    """Tests for the GreenhouseCrawler class."""
+
+    def test_platform_classvar(self):
+        """GreenhouseCrawler.platform should be 'greenhouse'."""
+        assert GreenhouseCrawler.platform == "greenhouse"
+
+    def test_constructor_sets_attributes(self):
+        """The constructor should store company_id, display_name, board_token, locations."""
+        crawler = GreenhouseCrawler(
+            company_id="bosch",
+            display_name="Bosch",
+            board_token="boschglobalsof",
+            locations=["Bengaluru", "Electronic City"],
+        )
+        assert crawler.company_id == "bosch"
+        assert crawler.display_name == "Bosch"
+        assert crawler.board_token == "boschglobalsof"
+        assert crawler.locations == ["Bengaluru", "Electronic City"]
+
+    @responses.activate
+    def test_fetch_jobs_uses_display_name_for_company(self):
+        """The class fetch_jobs should set company to display_name not board_token."""
+        responses.get(
+            "https://boards-api.greenhouse.io/v1/boards/boschglobalsof/jobs",
+            status=200,
+            json=SAMPLE_GREENHOUSE_RESPONSE,
+        )
+        crawler = GreenhouseCrawler(
+            company_id="bosch",
+            display_name="Bosch",
+            board_token="boschglobalsof",
+        )
+        jobs = crawler.fetch_jobs()
+        assert len(jobs) == 2
+        assert jobs[0]["company"] == "Bosch"
+        assert jobs[1]["company"] == "Bosch"
+        assert jobs[0]["source"] == "greenhouse"
+
+    def test_from_registry_creates_crawler(self):
+        """from_registry should create a GreenhouseCrawler from a registry entry."""
+        entry = {
+            "id": "bosch",
+            "company": "Bosch",
+            "platform": "greenhouse",
+            "board_token": "boschglobalsof",
+            "enabled": True,
+            "locations": ["Bengaluru"],
+        }
+        crawler = GreenhouseCrawler.from_registry(entry)
+        assert isinstance(crawler, GreenhouseCrawler)
+        assert crawler.company_id == "bosch"
+        assert crawler.display_name == "Bosch"
+        assert crawler.board_token == "boschglobalsof"
+        assert crawler.locations == ["Bengaluru"]
