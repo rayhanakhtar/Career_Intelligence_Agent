@@ -113,3 +113,17 @@
 **Cons:** Must add production origins before deployment. Phase 5 (React frontend) runs on port 5173 by default.
 
 **Future:** Read `ALLOWED_ORIGINS` from env var for production deployment.
+
+---
+
+### Decision #9: Vite dev proxy over direct CORS calls
+
+**Decision:** Use Vite's built-in dev server proxy (`/api` → `localhost:8000`) instead of making the frontend call `localhost:8000` directly.
+
+**Alternatives:** Direct `fetch("http://localhost:8000/jobs")` (works, but requires CORS and exposes backend port); no proxy at all (breaks without CORS config).
+
+**Pros:** Cleaner frontend code (`fetch("/api/jobs")`), no CORS issues in development, backend port is abstracted away, Vite handles the rewrite automatically.
+
+**Cons:** Proxy only works in dev — production needs a real reverse proxy (nginx, or serve the built frontend from FastAPI as static files). The `/api` path prefix must be stripped via `rewrite` since the backend routes don't have an `/api` prefix.
+
+**Future:** For production, either serve the `frontend/dist/` folder as FastAPI static files, or deploy behind nginx that handles the reverse proxy and static file serving.

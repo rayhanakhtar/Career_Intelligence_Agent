@@ -65,3 +65,11 @@
 *Learning:* FastAPI's `TestClient` runs sync endpoint functions in a thread pool via `anyio.to_thread.run_sync`. When the test creates a `sqlite3.Connection` in the main thread and passes it to the endpoint (via dependency override), the endpoint runs in a different thread. SQLite connections default to `check_same_thread=True`, which raises `ProgrammingError` when the connection is used from a different thread. The fix: pass `check_same_thread=False` when creating the connection in test fixtures. This is safe because we never share connections across threads concurrently.
 
 *Next:* Consider using a connection pool or creating connections per-request in the real `get_db` dependency (it already does this). The issue only applies to test dependency overrides where a pre-created connection is injected. For production, `sqlite3.connect()` in `get_db()` creates a fresh connection per request in the same thread the endpoint runs in, so the problem doesn't arise.
+
+---
+
+*Issue:* Why does the Vite proxy return 404 for `/api/health` even though the FastAPI `/health` endpoint exists?
+
+*Learning:* Without a `rewrite` option, Vite's proxy forwards the full path — `/api/health` goes to `localhost:8000/api/health`, which doesn't match any FastAPI route. Adding `rewrite: (path) => path.replace(/^\/api/, "")` strips the `/api` prefix so the request hits `localhost:8000/health` instead. This is a common gotcha when the backend routes don't have a global `/api` prefix.
+
+*Next:* If the API grows, consider adding a global `/api/v1` prefix to all FastAPI routers, which would make the proxy config simpler (no rewrite needed).

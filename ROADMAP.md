@@ -123,11 +123,11 @@
 **Dependencies:** Phase 4
 
 **Completion Criteria:**
-- [ ] Dashboard fetches and displays real data from FastAPI backend
-- [ ] Resume input form triggers `/search` and shows ranked results
-- [ ] Apply links open in new tabs
-- [ ] UI works on mobile (responsive)
-- [ ] No console errors or broken states
+- [x] Dashboard fetches and displays real data from FastAPI backend
+- [x] Resume input form triggers `/search` and shows ranked results
+- [x] Apply links open in new tabs
+- [x] UI works on mobile (responsive)
+- [x] No console errors or broken states
 
 ---
 
@@ -174,3 +174,15 @@
 - `BackgroundTasks` is sufficient for fire-and-forget crawling in MVP — no Celery/Redis needed.
 
 **Files created:** `api/__init__.py`, `api/main.py`, `api/models.py`, `api/dependencies.py`, `api/routes/__init__.py`, `api/routes/jobs.py`, `api/routes/search.py`, `api/routes/crawl.py`, `tests/conftest.py`, `tests/test_api_jobs.py`, `tests/test_api_search.py`, `tests/test_api_crawl.py`
+
+### Phase 5 – React Frontend *(2026-07-03)*
+
+**Insights:**
+- Vite proxy with `rewrite` is essential when the API routes don't have an `/api` prefix. Without `rewrite: (path) => path.replace(/^\/api/, "")`, the proxy forwards `/api/health` to `localhost:8000/api/health` (404). With rewrite, it becomes `localhost:8000/health` (200).
+- MUI v6 + Vite + React 19 + TypeScript scaffolded cleanly. The production build produces a 137 KB gzipped JS bundle — fast enough for MVP.
+- Frontend has zero unit tests (intentional — deferred to post-MVP). Manual smoke test confirmed search, crawl, and health all work via Vite proxy.
+- `@mui/icons-material` was installed but unused in this iteration (no icon usage). Kept for future enhancement.
+
+**Files created:** `frontend/` (Vite scaffold), `frontend/src/types/index.ts`, `frontend/src/api/client.ts`, `frontend/src/components/Layout.tsx`, `frontend/src/components/SearchForm.tsx`, `frontend/src/components/CrawlForm.tsx`, `frontend/src/components/JobTable.tsx`
+
+**Files modified:** `.gitignore` (added frontend/node_modules/, frontend/dist/)
