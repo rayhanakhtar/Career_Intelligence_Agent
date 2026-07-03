@@ -2,11 +2,13 @@
 
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import crawl, jobs, search
+from api.scheduler import CrawlScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +19,23 @@ logger.info("Log level set to %s", _LOG_LEVEL)
 _CORS_ORIGINS_RAW = os.getenv("CORS_ORIGINS", "http://localhost:5173")
 CORS_ORIGINS = [o.strip() for o in _CORS_ORIGINS_RAW.split(",") if o.strip()]
 
+DATABASE_PATH = os.getenv("DATABASE_PATH", "jobs.db")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Start the scheduler on boot, shut down on exit."""
+    scheduler = CrawlScheduler(db_path=DATABASE_PATH)
+    scheduler.start()
+    yield
+    scheduler.stop()
+
+
 app = FastAPI(
     title="Career Intelligence Agent",
     description="Discover and rank local AI/ML internships and entry-level jobs using semantic search.",
     version="0.2.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

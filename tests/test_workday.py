@@ -71,10 +71,10 @@ class TestWorkdayBuildJobRecord:
 class TestWorkdayFetchJobs:
     """Tests for fetch_jobs()."""
 
-    @patch("crawlers.workday._fetch_all_raw_jobs")
+    @patch("crawlers.workday._fetch_page")
     def test_fetch_jobs_returns_parsed_list(self, mock_fetch):
         """fetch_jobs should return a list of parsed job records."""
-        mock_fetch.return_value = SAMPLE_WORKDAY_RESPONSE["jobPostings"]
+        mock_fetch.return_value = SAMPLE_WORKDAY_RESPONSE
         jobs = fetch_jobs("wd1", "Microsoft")
         assert len(jobs) == 2
         assert jobs[0]["title"] == "Software Engineer II"
@@ -82,10 +82,10 @@ class TestWorkdayFetchJobs:
         assert jobs[1]["title"] == "Data Scientist"
         assert jobs[1]["company"] == "Microsoft"
 
-    @patch("crawlers.workday._fetch_all_raw_jobs")
+    @patch("crawlers.workday._fetch_page")
     def test_fetch_jobs_empty_response(self, mock_fetch):
         """An empty jobs list should return an empty list."""
-        mock_fetch.return_value = []
+        mock_fetch.return_value = {"total": 0, "jobPostings": []}
         jobs = fetch_jobs("wd1", "Empty")
         assert jobs == []
 
@@ -112,10 +112,10 @@ class TestWorkdayCrawlerClass:
         assert crawler.tenant == "Microsoft"
         assert crawler.locations == ["Bengaluru", "Hyderabad"]
 
-    @patch("crawlers.workday._fetch_all_raw_jobs")
+    @patch("crawlers.workday._fetch_page")
     def test_fetch_jobs_uses_display_name(self, mock_fetch):
         """The class fetch_jobs should set company to display_name."""
-        mock_fetch.return_value = SAMPLE_WORKDAY_RESPONSE["jobPostings"]
+        mock_fetch.return_value = SAMPLE_WORKDAY_RESPONSE
         crawler = WorkdayCrawler(
             company_id="microsoft",
             display_name="Microsoft",

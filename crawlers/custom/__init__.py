@@ -10,6 +10,9 @@ from crawlers.custom.cisco_careers import CiscoCrawler
 from crawlers.custom.intel_careers import IntelCrawler
 from crawlers.custom.qualcomm_careers import QualcommCrawler
 from crawlers.custom.apple_careers import AppleCrawler
+from crawlers.custom.mathcompany_careers import MathCompanyCrawler
+from crawlers.custom.swiggy_careers import SwiggyCrawler
+from crawlers.custom.tredence_careers import TredenceCrawler
 
 __all__ = [
     "GoogleCrawler",
@@ -22,4 +25,7 @@ __all__ = [
     "IntelCrawler",
     "QualcommCrawler",
     "AppleCrawler",
+    "MathCompanyCrawler",
+    "SwiggyCrawler",
+    "TredenceCrawler",
 ]

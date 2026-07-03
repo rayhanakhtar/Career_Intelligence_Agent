@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 from typing import Any
 
 from crawlers.base import BaseCrawler
@@ -12,88 +13,68 @@ logger = logging.getLogger(__name__)
 LEVER_API_BASE = "https://api.lever.co/v0/postings/{company}?mode=json"
 
 
+def _get_categories(raw: dict[str, Any]) -> dict[str, Any]:
+    """Safely extract categories dict from a Lever job."""
+    cats = raw.get("categories")
+    return cats if isinstance(cats, dict) else {}
+
+
 def _build_job_record(raw: dict[str, Any], company_name: str) -> dict[str, Any]:
-    """Normalise a raw Lever job dict into the standard job record format.
+    """Normalise a raw Lever job dict into the standard job record format."""
+    categories = _get_categories(raw)
 
-    Args:
-        raw: A single job object from the Lever API response.
-        company_name: Value for the ``company`` field (slug or display name).
-
-    Returns:
-        A standardised job record dictionary.
-    """
     return {
-        "title": raw.get("text", ""),
+        "title": raw.get("text") or "",
         "company": company_name,
-        "location": raw.get("categories", {}).get("location", ""),
-        "description": raw.get("description", ""),
-        "apply_url": raw.get("hostedUrl", ""),
-        "department": raw.get("categories", {}).get("department", ""),
-        "employment_type": raw.get("categories", {}).get("commitment", ""),
-        "posted_at": raw.get("createdAt", ""),
+        "location": categories.get("location") or "",
+        "description": raw.get("description") or "",
+        "apply_url": raw.get("hostedUrl") or "",
+        "department": categories.get("department") or "",
+        "employment_type": categories.get("commitment") or "",
+        "posted_at": raw.get("createdAt") or raw.get("updatedAt") or "",
         "source": "lever",
-        "source_id": raw.get("id", ""),
+        "source_id": raw.get("id") or raw.get("hostedUrl") or "",
     }
 
 
 def _fetch_raw_jobs(company: str) -> list[dict[str, Any]]:
-    """Low-level: fetch raw job dicts from the Lever API.
-
-    Args:
-        company: The Lever company slug.
-
-    Returns:
-        A list of raw job dicts from the API, or empty list on failure.
-    """
+    """Low-level: fetch raw job dicts from the Lever API."""
     url = LEVER_API_BASE.format(company=company)
+    t0 = time.time()
     response = get_with_retry(url)
+    elapsed = time.time() - t0
 
     if response is None:
-        logger.error("Failed to fetch jobs for Lever company '%s'", company)
+        logger.error("Failed to fetch jobs for Lever company '%s' (%.2fs)", company, elapsed)
         return []
 
     try:
         data = response.json()
     except (json.JSONDecodeError, ValueError) as e:
-        logger.error("Invalid JSON from Lever API for '%s': %s", company, e)
+        logger.error("Invalid JSON from Lever API for '%s': %s (%.2fs)", company, e, elapsed)
         return []
 
     if not isinstance(data, list):
-        logger.warning("Unexpected response format from Lever API for '%s'", company)
+        logger.warning("Unexpected response format from Lever API for '%s' (%.2fs)", company, elapsed)
         return []
 
-    logger.info("Fetched %d jobs from Lever company '%s'", len(data), company)
+    logger.info("Fetched %d jobs from Lever company '%s' (%.2fs)", len(data), company, elapsed)
     return data
 
 
 def fetch_jobs(company: str) -> list[dict[str, Any]]:
-    """Fetch all active job postings from a Lever company page.
-
-    Args:
-        company: The company name as it appears in the Lever URL
-                 (e.g. "google" for jobs.lever.co/google).
-
-    Returns:
-        A list of standardised job record dictionaries.
-    """
+    """Fetch all active job postings from a Lever company page."""
     raw_jobs = _fetch_raw_jobs(company)
     return [_build_job_record(job, company) for job in raw_jobs]
 
 
 def fetch_and_save(company: str, output_path: str) -> int:
-    """Fetch jobs from a Lever company page and save to a JSON file.
-
-    Args:
-        company: The company name as it appears in the Lever URL.
-        output_path: Path to write the JSON output file.
-
-    Returns:
-        Number of jobs saved.
-    """
+    """Fetch jobs from a Lever company page and save to a JSON file."""
+    t0 = time.time()
     jobs = fetch_jobs(company)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(jobs, f, indent=2, ensure_ascii=False)
-    logger.info("Saved %d jobs to %s", len(jobs), output_path)
+    logger.info("Saved %d jobs to %s (%.2fs)", len(jobs), output_path, time.time() - t0)
     return len(jobs)
 
 
