@@ -16,15 +16,15 @@ class TestCrawlAll:
             db_path = f.name
 
         try:
-            with patch("crawlers.dispatcher.build_crawlers", return_value=[]):
+            with patch("crawlers.service.build_crawlers", return_value=[]):
                 result = crawl_all(db_path)
             assert result == {}
         finally:
             import os
             os.unlink(db_path)
 
-    @patch("crawlers.dispatcher.build_crawlers")
-    @patch("crawlers.dispatcher.insert_job")
+    @patch("crawlers.service.build_crawlers")
+    @patch("crawlers.service.insert_job")
     def test_crawl_all_with_mock_crawlers(self, mock_insert, mock_build):
         """crawl_all should return a summary of per-company job counts."""
         from crawlers.base import BaseCrawler
@@ -63,7 +63,7 @@ class TestCrawlAll:
         assert result == {"Company A": 2, "Company B": 1}
         assert mock_insert.call_count == 3
 
-    @patch("crawlers.dispatcher.build_crawlers")
+    @patch("crawlers.service.build_crawlers")
     def test_crawl_all_crawler_exception(self, mock_build):
         """A crawler that raises should be skipped without crashing crawl_all."""
         from crawlers.base import BaseCrawler
@@ -96,7 +96,7 @@ class TestCrawlAll:
 
         assert result == {"Good Co": 1}
 
-    @patch("crawlers.dispatcher.build_crawlers")
+    @patch("crawlers.service.build_crawlers")
     def test_crawl_all_stores_to_db(self, mock_build):
         """Jobs should be persisted in the SQLite database."""
         from crawlers.base import BaseCrawler

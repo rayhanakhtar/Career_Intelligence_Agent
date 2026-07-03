@@ -18,7 +18,7 @@ class TestListJobs:
     """Tests for GET /jobs."""
 
     def test_list_jobs_empty(self):
-        """GET /jobs on an empty database should return an empty list."""
+        """GET /jobs on an empty database should return an empty page."""
         app.dependency_overrides.clear()
         import sqlite3
         conn = sqlite3.connect(":memory:", check_same_thread=False)
@@ -29,7 +29,10 @@ class TestListJobs:
         client = TestClient(app)
         response = client.get("/jobs")
         assert response.status_code == status.HTTP_200_OK
-        assert response.json() == []
+        body = response.json()
+        assert body["items"] == []
+        assert body["total"] == 0
+        assert body["page"] == 1
         conn.close()
 
     def test_list_jobs_with_data(self, db_with_jobs):
@@ -38,24 +41,46 @@ class TestListJobs:
         client = TestClient(app)
         response = client.get("/jobs")
         assert response.status_code == status.HTTP_200_OK
-        data = response.json()
-        assert len(data) == 3
-        assert data[0]["title"] == "Data Scientist"
-        assert data[1]["title"] == "AI/ML Engineer Intern"
-        assert data[2]["title"] == "Software Engineer"
+        body = response.json()
+        assert len(body["items"]) == 3
+        assert body["total"] == 3
+        assert body["page"] == 1
 
     def test_list_jobs_response_shape(self, db_with_jobs):
         """Each job response should have the expected fields."""
         app.dependency_overrides[get_db] = _override_get_db(db_with_jobs)
         client = TestClient(app)
         response = client.get("/jobs")
-        data = response.json()[0]
+        item = response.json()["items"][0]
         expected_keys = {
             "id", "title", "company", "location", "description",
             "apply_url", "department", "employment_type", "posted_at",
             "source", "source_id", "created_at",
         }
-        assert set(data.keys()) == expected_keys
+        assert set(item.keys()) == expected_keys
+
+    def test_list_jobs_pagination(self, db_with_jobs):
+        """GET /jobs?page=1&per_page=2 should paginate correctly."""
+        app.dependency_overrides[get_db] = _override_get_db(db_with_jobs)
+        client = TestClient(app)
+        response = client.get("/jobs?page=1&per_page=2")
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()
+        assert len(body["items"]) == 2
+        assert body["total"] == 3
+        assert body["page"] == 1
+        assert body["per_page"] == 2
+
+    def test_list_jobs_filters(self, db_with_jobs):
+        """GET /jobs?company=infosys should filter correctly."""
+        app.dependency_overrides[get_db] = _override_get_db(db_with_jobs)
+        client = TestClient(app)
+        response = client.get("/jobs?company=infosys")
+        assert response.status_code == status.HTTP_200_OK
+        body = response.json()
+        assert len(body["items"]) == 1
+        assert body["items"][0]["company"] == "infosys"
+        assert body["total"] == 1
 
 
 class TestGetJob:

@@ -3,13 +3,16 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from crawlers.base import BaseCrawler
 
 logger = logging.getLogger(__name__)
 
-_COMPANIES_PATH = os.getenv("COMPANIES_PATH", os.path.join("data", "companies.json"))
+_COMPANIES_PATH = os.getenv("COMPANIES_PATH", os.path.join("data", "companies.yml"))
 
 _crawler_classes: dict[str, type[BaseCrawler]] = {}
 
@@ -30,40 +33,98 @@ def get_crawler_class(platform: str) -> type[BaseCrawler] | None:
     return _crawler_classes.get(platform)
 
 
-def load_companies(path: str | None = None) -> list[dict[str, Any]]:
-    """Load the company registry from a JSON file.
+def _resolve_registry_path(path: str | None) -> str:
+    """Resolve the registry file path, falling back from YAML to JSON.
 
     Args:
-        path: Path to the JSON file. Defaults to ``data/companies.json``.
+        path: Explicit path, or ``None`` to use the default.
+
+    Returns:
+        A file path that exists, or the requested path if nothing exists.
+    """
+    p = path or _COMPANIES_PATH
+
+    # If an explicit path was given, use it as-is.
+    if path is not None:
+        return p
+
+    # Default path: prefer .yml, fall back to .json for backward compat.
+    p_path = Path(p)
+    if not p_path.exists():
+        json_fallback = p_path.with_suffix(".json")
+        if json_fallback.exists():
+            logger.info("YAML registry not found, falling back to %s", json_fallback)
+            return str(json_fallback)
+
+    return p
+
+
+def _load_yaml(path: str) -> list[dict[str, Any]]:
+    """Load companies from a YAML file.
+
+    Expects a top-level ``companies`` key containing a list.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    if isinstance(data, dict):
+        data = data.get("companies", [])
+    if not isinstance(data, list):
+        logger.warning("Unexpected YAML structure in %s — expected a list under 'companies'", path)
+        return []
+    return data
+
+
+def _load_json(path: str) -> list[dict[str, Any]]:
+    """Load companies from a JSON file (top-level list)."""
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_companies(path: str | None = None) -> list[dict[str, Any]]:
+    """Load the company registry from a YAML or JSON file.
+
+    Detects format by file extension (``.yml``/``.yaml`` vs ``.json``).
+    Defaults to ``data/companies.yml`` with a fallback to ``data/companies.json``.
+
+    Args:
+        path: Path to the registry file. If ``None``, uses the default path.
 
     Returns:
         A list of company dicts.
     """
-    p = path or _COMPANIES_PATH
+    p = _resolve_registry_path(path)
     try:
-        with open(p, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        if p.endswith((".yml", ".yaml")):
+            data = _load_yaml(p)
+        else:
+            data = _load_json(p)
         logger.info("Loaded %d companies from %s", len(data), p)
         return data
     except FileNotFoundError:
         logger.warning("Company registry not found at %s — returning empty list", p)
         return []
-    except json.JSONDecodeError as e:
-        logger.error("Invalid JSON in company registry %s: %s", p, e)
+    except (json.JSONDecodeError, yaml.YAMLError) as e:
+        logger.error("Invalid registry file %s: %s", p, e)
         return []
 
 
 def save_companies(companies: list[dict[str, Any]], path: str | None = None) -> None:
-    """Save the company registry to a JSON file.
+    """Save the company registry to a YAML or JSON file.
+
+    Detects format by file extension (``.yml``/``.yaml`` vs ``.json``).
 
     Args:
         companies: List of company dicts.
-        path: Path to write to. Defaults to ``data/companies.json``.
+        path: Path to write to. Defaults to ``data/companies.yml``.
     """
     p = path or _COMPANIES_PATH
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
-        json.dump(companies, f, indent=2, ensure_ascii=False)
+    if p.endswith((".yml", ".yaml")):
+        with open(p, "w", encoding="utf-8") as f:
+            yaml.dump({"companies": companies}, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    else:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(companies, f, indent=2, ensure_ascii=False)
     logger.info("Saved %d companies to %s", len(companies), p)
 
 

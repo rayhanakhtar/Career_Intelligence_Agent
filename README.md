@@ -1,72 +1,68 @@
-# Career_Intelligence_Agent
+# Career Intelligence Agent
 
 *An AI-driven pipeline that automatically discovers, crawls, and semantically matches local AI/ML internships and entry-level jobs — starting with Electronic City, Bengaluru.*
 
 ## Problem
 
-- **Hyper-local job search is broken.** You're an AI/ML intern in Electronic City, Bengaluru. Bosch, Infosys, Wipro, TCS, and a dozen other tech campuses are within 5 km. But finding their internship postings means checking 15+ separate career pages every week. That's tedious, and you'll miss openings anyway.
-- **General portals make it worse.** LinkedIn, Indeed, and Naukri show duplicates, stale listings, and irrelevant senior roles. Filtering for "AI/ML intern, Electronic City" returns noise.
+- **Hyper-local job search is broken.** You're an AI/ML intern in Electronic City, Bengaluru. Bosch, Infosys, Wipro, and a dozen other tech campuses are within 5 km. But finding their internship postings means checking 15+ separate career pages every week.
+- **General portals make it worse.** LinkedIn, Indeed, and Naukri show duplicates, stale listings, and irrelevant senior roles.
 - **No local aggregator exists.** Each company uses a different ATS (Greenhouse, Lever, Workday, etc.). There's no single place that watches them all for you.
 
 ## Solution
 
 A lightweight, zero-cost agent that automates the entire pipeline:
 
-1. **Discovers** tech companies near your location.
-2. **Detects** the ATS platform (Greenhouse, Lever, Workday, etc.) each company uses.
-3. **Crawls** career pages and extracts structured job data (title, location, description, apply link).
-4. **Embeds** job descriptions using `sentence-transformers` (all-MiniLM-L6-v2) and computes cosine similarity against your resume/profile.
-5. **Ranks & displays** results with match scores.
+1. **Crawls** 19+ company career pages across 4 platforms (Greenhouse, Lever, Workday, custom scrapers).
+2. **Embeds** job descriptions using `sentence-transformers` (all-MiniLM-L6-v2) and computes cosine similarity against your resume/profile.
+3. **Ranks & displays** results with match scores, location-aware boosting, and a React dashboard.
 
-**Semantic search, not brittle keyword matching.** We embed both resumes and job descriptions into vectors so that *"Machine Learning Engineer"* semantically matches *"Deep Learning Engineer"* even if exact keywords differ. Cosine similarity on 384-dim embeddings captures meaning beyond keyword overlap.
-
-For detailed rationale on architectural choices and trade-offs, see [DECISIONS.md](./DECISIONS.md).
+**Semantic search, not brittle keyword matching.** We embed both resumes and job descriptions into 384-dim vectors so that *"Machine Learning Engineer"* semantically matches *"Deep Learning Engineer"* even if exact keywords differ.
 
 ## Features
 
-- **Company Discovery Agent** — Geo-targeted list of nearby tech employers (Electronic City Phase I).
-- **ATS Detector** — Pattern-matches URLs to identify Greenhouse, Lever, Workday, and other platforms.
-- **Intelligent Crawler** — Uses public APIs where available (Greenhouse, Lever), falls back to static scraping.
-- **Semantic Matching Engine** — CPU-only embeddings via `all-MiniLM-L6-v2`. No cloud API costs.
-- **Resume-to-Job Scoring** — Cosine similarity between your resume text and each job description.
-- **SQLite Persistence** — Zero-setup local database. No Docker, no cloud. Each design choice is deliberate: SQLite is serverless and trivial to migrate to Postgres later if needed.
-- **FAISS Index** — Efficient vector search for fast nearest-neighbor queries as the dataset grows.
+- **19+ Company Crawlers** — Greenhouse, Lever, Workday, and 10 custom scrapers (Google, Amazon, Meta, NVIDIA, IBM, Oracle, Cisco, Intel, Qualcomm, Apple).
+- **ATS Detector** — Pattern-matches URLs to identify 9 platforms (Greenhouse, Lever, Workday, SmartRecruiters, Ashby, BambooHR, iCIMS, Taleo, Jobvite).
+- **Decoupled CrawlService** — Reusable by REST API, APScheduler, or CLI (`crawlers/service.py`).
+- **Company Registry** — YAML-based (`data/companies.yml`) with `renderer` field (requests/playwright), fallback JSON support.
+- **FastAPI Backend** — REST endpoints for crawl, search, and job listing with auto-docs at `/docs`.
+- **Persistent FAISS Index** — Cached to disk, auto-rebuilt when jobs change.
+- **Paginated Job Listings** — `GET /jobs?page=&per_page=&company=&location=&source=` with filtering.
+- **Resume Upload** — PDF, DOCX, and TXT via `POST /search/upload`.
+- **Location-Aware Ranking** — 1.5x boost for jobs matching preferred locations.
+- **React Frontend** — Vite + MUI dashboard with crawl controls and results display.
+- **SQLite Persistence** — Zero-setup local database.
 
 ## Technology Stack
 
 | Component | Choice | Why |
 |-----------|--------|-----|
 | Language | Python 3.11+ | Rich ML/scraping ecosystem |
-| Database | SQLite (built-in `sqlite3`) | Zero setup, single file. Deliberate MVP choice — Postgres comes later if needed. |
-| Embeddings | `sentence-transformers` + `all-MiniLM-L6-v2` | 384-dim, fast on CPU, top of its size class on MTEB. Zero cost. |
-| Vector Search | FAISS (CPU) | Open-source, handles millions of vectors locally. No cloud dependency. |
-| Scraping | `requests` + `BeautifulSoup` | Lightweight, sufficient for 90% of target sites. Playwright added later for JS-heavy pages. |
-| API Layer | FastAPI *(Phase 4+)* | Async, auto-docs. Not needed until the pipeline is wrapped in endpoints. |
-| Frontend | React (Vite) + MUI *(Phase 5+)* | Modern component-based UI. Not built yet — the core logic comes first. |
-| Alerting | Telegram Bot *(Phase 5+)* | Push notifications for high-match jobs. Added last. |
+| Database | SQLite (built-in `sqlite3`) | Zero setup, single file |
+| Embeddings | `sentence-transformers` + `all-MiniLM-L6-v2` | 384-dim, fast on CPU, zero cost |
+| Vector Search | FAISS (CPU) | Open-source, persistent index |
+| Scraping | `requests` + `BeautifulSoup` | Lightweight, capable for 90% of sites. Playwright available for JS-heavy pages |
+| API Layer | FastAPI | Async, auto-docs, dependency injection |
+| Frontend | React (Vite) + MUI | Modern component-based UI |
+| Config | `.env` + `companies.yml` | Environment variables + YAML registry |
 
 ## Architecture
 
 ```
+                     ┌──────────────┐
+                     │  companies   │
+                     │   .yml       │
+                     └──────┬───────┘
+                            ▼
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Company     │ ──▶ │  ATS         │ ──▶ │  Crawler     │
-│  Discovery   │     │  Detector    │     │  & Extractor │
-└─────────────┘     └──────────────┘     └──────┬──────┘
-                                                ▼
+│  CrawlService│ ──▶ │  Crawler     │ ──▶ │  SQLite DB   │
+│  (FastAPI /  │     │  Instances   │     │  (jobs.db)   │
+│   Scheduler) │     └──────────────┘     └──────┬──────┘
+└─────────────┘                                   ▼
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  (Future)    │ ◀── │  Ranked      │ ◀── │  Embedding   │
-│  Dashboard   │     │  + Store     │     │  + Matching  │
+│  React       │ ◀── │  FastAPI     │ ◀── │  FAISS       │
+│  Frontend    │     │  /search     │     │  Index       │
 └─────────────┘     └──────────────┘     └─────────────┘
 ```
-
-## Sample Output
-
-| Company | Role | Match % | Experience | Location |
-|---------|------|---------|------------|----------|
-| Bosch Global Software Technologies | AI/ML Engineer Intern | 92% | 0-1 yr | Electronic City, Bengaluru |
-| Infosys | Data Science Intern | 85% | 0-1 yr | Electronic City, Bengaluru |
-| Wipro | Machine Learning Engineer | 78% | 1-2 yr | Electronic City, Bengaluru |
-| TCS | Research Intern - ML/AI | 74% | 0-1 yr | Electronic City, Bengaluru |
 
 ## Setup
 
@@ -77,11 +73,9 @@ For detailed rationale on architectural choices and trade-offs, see [DECISIONS.m
 ### Installation
 
 ```bash
-# Clone the repo
 git clone https://github.com/yourusername/Career_Intelligence_Agent.git
 cd Career_Intelligence_Agent
 
-# Set up virtual environment
 python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
@@ -89,37 +83,121 @@ pip install -r requirements.txt
 
 ### Configuration
 
-**No API keys required.** The MVP uses:
-- Public Greenhouse/Lever APIs (no auth).
-- Local CPU-only embeddings (no cloud costs).
-- SQLite database (auto-created).
+Copy `.env.example` to `.env` and adjust:
+
+```bash
+cp .env.example .env
+```
+
+Key environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_PATH` | `jobs.db` | Path to SQLite database |
+| `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
+| `COMPANIES_PATH` | `data/companies.yml` | Company registry path |
+| `LOG_LEVEL` | `INFO` | Logging level |
+| `FAISS_INDEX_DIR` | `faiss_index` | Persistent FAISS index directory |
+
+**No API keys required.** All crawlers use public APIs or public HTML.
 
 ### Running
 
 ```bash
-# Phase 1: Fetch jobs from Greenhouse to JSON
-python crawlers/greenhouse.py --board bosch
+# Start the FastAPI server
+uvicorn api.main:app --reload
 
-# Phase 2: Import into SQLite
-python database/import.py
+# In another terminal, crawl all companies
+curl -X POST http://localhost:8000/crawl/all
 
-# Phase 3: Rank against your resume
-python pipeline/rank.py --resume my_resume.txt
+# Crawl a single company
+curl -X POST http://localhost:8000/crawl \
+  -H "Content-Type: application/json" \
+  -d '{"company_id": "google"}'
+
+# Search jobs
+curl -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{"resume_text": "I am an AI/ML intern...", "top_k": 10}'
+
+# List jobs with pagination
+curl "http://localhost:8000/jobs?page=1&per_page=20&company=google"
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The UI is served at `http://localhost:5173` and connects to the FastAPI backend at `http://localhost:8000`.
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/crawl` | Crawl a single company by `company_id` |
+| `POST` | `/crawl/all` | Crawl all enabled companies |
+| `GET` | `/crawl/all/{task_id}` | Poll crawl-all results |
+| `GET` | `/jobs` | List jobs with `page`, `per_page`, `company`, `location`, `source` filters |
+| `GET` | `/jobs/{id}` | Get single job by ID |
+| `POST` | `/search` | Semantic search with resume text |
+| `POST` | `/search/upload` | Semantic search with uploaded resume file |
+
+## Adding a New Company
+
+1. Investigate the company's career page to determine ATS platform and API endpoints.
+2. Add an entry to `data/companies.yml` with the appropriate `platform`, `renderer`, and platform-specific identifiers.
+3. If the platform already has a registered crawler class, it will be picked up automatically.
+4. If a new platform is needed, create a crawler class inheriting from `BaseCrawler`, implement `fetch_jobs()` and `from_registry()`, then register it in `crawlers/__init__.py`.
+
+## Project Structure
+
+```
+├── api/                  # FastAPI application
+│   ├── main.py           # Entry point, CORS, logging
+│   ├── models.py         # Pydantic request/response schemas
+│   ├── dependencies.py   # DB connection dependency
+│   ├── routes/           # API route handlers
+│   └── extractor.py      # Resume text extraction (PDF/DOCX/TXT)
+├── crawlers/             # Job board crawlers
+│   ├── service.py        # CrawlService orchestrator
+│   ├── base.py           # BaseCrawler ABC
+│   ├── registry.py       # Company registry (YAML + JSON)
+│   ├── greenhouse.py     # Greenhouse ATS crawler
+│   ├── lever.py          # Lever ATS crawler
+│   ├── workday.py        # Workday ATS crawler
+│   ├── custom/           # 10 custom company scrapers
+│   ├── ats_detector.py   # ATS platform detection
+│   ├── utils.py          # HTTP retry utilities
+│   └── playwright_pool.py # Playwright browser pool
+├── data/
+│   ├── companies.yml     # Company registry (YAML)
+│   └── companies.json    # Legacy JSON registry (fallback)
+├── database/
+│   ├── schema.py         # Table definitions
+│   └── crud.py           # Insert/query operations
+├── embeddings/
+│   ├── embedder.py       # Sentence embedding
+│   ├── vector_store.py   # FAISS index wrapper
+│   └── matcher.py        # Score computation
+├── pipeline/
+│   ├── rank.py           # Ranking pipeline (with FAISS caching)
+│   └── search_service.py # Search service wrapper
+├── frontend/             # React + Vite + MUI
+├── tests/                # 178+ tests (pytest)
+├── .env.example          # Environment variable template
+├── requirements.txt
+└── README.md
 ```
 
 ## Roadmap
 
-```
-Phase 0 — Research & Setup        [COMPLETE]
-Phase 1 — MVP Crawlers             [IN PROGRESS]
-Phase 2 — SQLite Storage           [UP NEXT]
-Phase 3 — Semantic Layer           [PLANNED]
-Phase 4 — FastAPI Backend          [PLANNED]
-Phase 5 — React Frontend           [PLANNED]
-```
-
-See [ROADMAP.md](./ROADMAP.md) for detailed milestones and deliverables.
+See [ROADMAP.md](./ROADMAP.md) for detailed milestones.
 
 ## Contributing
 
-This project is in active early-stage development. Contributions, issues, and feature suggestions are welcome. The project is structured as independent modular agents, making it easy to extend or swap components.
+Contributions, issues, and feature suggestions are welcome. The project is structured as independent modular agents, making it easy to extend or swap components.

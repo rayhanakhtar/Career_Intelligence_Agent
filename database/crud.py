@@ -114,3 +114,86 @@ def count_jobs(conn: sqlite3.Connection) -> int:
     """
     cursor = conn.execute(SELECT_COUNT_SQL)
     return cursor.fetchone()[0]
+
+
+def _build_filter_query(
+    base_select: str,
+    base_count: str,
+    company: str | None = None,
+    location: str | None = None,
+    source: str | None = None,
+) -> tuple[str, str, list[str]]:
+    """Build a SQL query with optional WHERE filters.
+
+    Args:
+        base_select: The SELECT clause (with ORDER BY).
+        base_count: The COUNT clause.
+        company: Optional company name filter (substring match).
+        location: Optional location filter (substring match).
+        source: Optional source filter (exact match).
+
+    Returns:
+        A tuple of (select_sql, count_sql, params_list).
+    """
+    conditions: list[str] = []
+    params: list[str] = []
+
+    if company:
+        conditions.append("company LIKE ?")
+        params.append(f"%{company}%")
+    if location:
+        conditions.append("location LIKE ?")
+        params.append(f"%{location}%")
+    if source:
+        conditions.append("source = ?")
+        params.append(source)
+
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+    return base_select + where_clause, base_count + where_clause, params
+
+
+def get_jobs_filtered(
+    conn: sqlite3.Connection,
+    page: int = 1,
+    per_page: int = 50,
+    company: str | None = None,
+    location: str | None = None,
+    source: str | None = None,
+) -> tuple[list[dict[str, Any]], int]:
+    """Retrieve a paginated, filtered list of jobs.
+
+    Args:
+        conn: An active SQLite connection.
+        page: 1-indexed page number.
+        per_page: Number of results per page (max 100).
+        company: Optional company filter (case-insensitive substring).
+        location: Optional location filter (case-insensitive substring).
+        source: Optional source filter (exact match, e.g. ``"greenhouse"``).
+
+    Returns:
+        A tuple of (list_of_jobs, total_count_matching_filters).
+    """
+    select_sql = "SELECT * FROM jobs"
+    count_sql = "SELECT COUNT(*) FROM jobs"
+    select_sql, count_sql, params = _build_filter_query(
+        select_sql, count_sql, company, location, source,
+    )
+
+    select_sql += " ORDER BY posted_at DESC"
+
+    # Ensure sane bounds.
+    per_page = max(1, min(per_page, 100))
+    page = max(1, page)
+    offset = (page - 1) * per_page
+
+    select_sql += " LIMIT ? OFFSET ?"
+    select_params = [*params, str(per_page), str(offset)]
+
+    conn.row_factory = sqlite3.Row
+    cursor = conn.execute(select_sql, select_params)
+    jobs = [_row_to_dict(row) for row in cursor.fetchall()]
+
+    cursor = conn.execute(count_sql, params)
+    total = cursor.fetchone()[0]
+
+    return jobs, total

@@ -43,8 +43,7 @@ class SearchResponse(BaseModel):
 class CrawlRequest(BaseModel):
     """Request body for the /crawl endpoint."""
 
-    source: str
-    token: str
+    company_id: str
 
 
 class CrawlResponse(BaseModel):
@@ -73,6 +72,15 @@ class CrawlAllResultResponse(BaseModel):
     task_id: str
     status: str
     results: dict[str, int]
+
+
+class PaginatedJobsResponse(BaseModel):
+    """Paginated list of jobs with metadata."""
+
+    items: list[JobResponse]
+    total: int
+    page: int
+    per_page: int
 
 
 class ErrorResponse(BaseModel):
