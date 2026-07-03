@@ -8,6 +8,8 @@ from typing import Any
 
 import requests
 
+from crawlers.registry import build_crawlers, get_crawler_class
+
 logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ def verify_lever():
 
 def verify_workday(subdomain: str, tenant: str, label: str):
     logger.info("[Workday] Testing %s (%s/%s)...", label, subdomain, tenant)
-    url = f"https://{subdomain}.myworkdayjobs.com/wday/cxs/{subdomain}/{tenant}/jobs"
+    url = f"https://{tenant}.{subdomain}.myworkdayjobs.com/wday/cxs/{tenant}/{tenant}/jobs"
     payload = {"limit": 5, "offset": 0, "searchText": ""}
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
     t0 = time.time()
@@ -134,32 +136,86 @@ def verify_workable():
         logger.info("  Response body: %s", r.text[:300])
 
 
-def verify_swiggy():
-    """Verify Swiggy MyNextHire API."""
-    from crawlers.custom.swiggy_careers import SwiggyCrawler
-    logger.info("[Swiggy] Testing MyNextHire API...")
+def _verify_custom_crawler(platform: str, company_id: str) -> None:
+    """Verify a custom crawler by building it from the registry and fetching jobs."""
+    label = f"[{platform}] Testing {company_id}..."
+    logger.info(label)
+    cls = get_crawler_class(platform)
+    if cls is None:
+        check(f"crawler_class ({platform})", False, f"No class registered for {platform}")
+        return
     t0 = time.time()
-    c = SwiggyCrawler("swiggy", "Swiggy")
-    jobs = c.fetch_jobs()
-    elapsed = time.time() - t0
-    check("fetched jobs", len(jobs) > 0, f"{len(jobs)} jobs ({elapsed:.1f}s)")
-    if jobs:
-        check("has title", bool(jobs[0].get("title")), f"title='{jobs[0].get('title', '')}'")
-        check("has source", jobs[0].get("source") == "swiggy_careers", f"source={jobs[0].get('source')}")
+    try:
+        crawlers = build_crawlers()
+        crawler = None
+        for c in crawlers:
+            if c.company_id == company_id:
+                crawler = c
+                break
+        if crawler is None:
+            check(f"crawler_instance ({company_id})", False, f"No crawler built for {company_id}")
+            return
+        jobs = crawler.fetch_jobs()
+        elapsed = time.time() - t0
+        check(f"fetched jobs ({company_id})", len(jobs) > 0, f"{len(jobs)} jobs ({elapsed:.1f}s)")
+        if jobs:
+            check(f"has title ({company_id})", bool(jobs[0].get("title")), f"title='{jobs[0].get('title', '')}'")
+            check(f"has source ({company_id})", jobs[0].get("source") == platform, f"source={jobs[0].get('source')}")
+    except Exception as e:
+        elapsed = time.time() - t0
+        check(f"exception ({company_id})", False, f"{e} ({elapsed:.1f}s)")
+
+
+def verify_google():
+    _verify_custom_crawler("google_careers", "google")
+
+
+def verify_amazon():
+    _verify_custom_crawler("amazon_careers", "amazon")
+
+
+def verify_meta():
+    _verify_custom_crawler("meta_careers", "meta")
+
+
+def verify_nvidia():
+    _verify_custom_crawler("nvidia_careers", "nvidia")
+
+
+def verify_ibm():
+    _verify_custom_crawler("ibm_careers", "ibm")
+
+
+def verify_oracle():
+    _verify_custom_crawler("oracle_careers", "oracle")
+
+
+def verify_cisco():
+    _verify_custom_crawler("cisco_careers", "cisco")
+
+
+def verify_intel():
+    _verify_custom_crawler("intel_careers", "intel")
+
+
+def verify_qualcomm():
+    _verify_custom_crawler("qualcomm_careers", "qualcomm")
+
+
+def verify_apple():
+    _verify_custom_crawler("apple_careers", "apple")
+
+
+def verify_swiggy():
+    _verify_custom_crawler("swiggy_careers", "swiggy")
 
 
 def verify_tredence():
-    """Verify Tredence RippleHire API."""
-    from crawlers.custom.tredence_careers import TredenceCrawler
-    logger.info("[Tredence] Testing RippleHire API...")
-    t0 = time.time()
-    c = TredenceCrawler("tredence", "Tredence")
-    jobs = c.fetch_jobs()
-    elapsed = time.time() - t0
-    check("fetched jobs", len(jobs) > 0, f"{len(jobs)} jobs ({elapsed:.1f}s)")
-    if jobs:
-        check("has title", bool(jobs[0].get("title")), f"title='{jobs[0].get('title', '')}'")
-        check("has source", jobs[0].get("source") == "tredence_careers", f"source={jobs[0].get('source')}")
+    _verify_custom_crawler("tredence_careers", "tredence")
+
+
+def verify_mathcompany():
+    _verify_custom_crawler("mathcompany_careers", "themathcompany")
 
 
 def main():
@@ -169,17 +225,30 @@ def main():
     print("=" * 60)
     print()
 
-    # Verifying all platforms
+    # Generic ATS platforms
     verify_greenhouse()
     verify_lever()
-    verify_workday("wd5", "Adobe", "Adobe (wd5)")
-    verify_workday("wd1", "Microsoft", "Microsoft (wd1)")
-    verify_workday("wd1", "ServiceNow", "ServiceNow (blocked?)")
     verify_ashby()
     verify_smartrecruiters()
     verify_workable()
+
+    # Workday (requests path — will mostly fail due to Cloudflare)
+    verify_workday("wd5", "Adobe", "Adobe (wd5)")
+
+    # Custom crawlers (use real crawler instances)
+    verify_google()
+    verify_amazon()
+    verify_meta()
+    verify_nvidia()
+    verify_ibm()
+    verify_oracle()
+    verify_cisco()
+    verify_intel()
+    verify_qualcomm()
+    verify_apple()
     verify_swiggy()
     verify_tredence()
+    verify_mathcompany()
 
     print()
     print("=" * 60)

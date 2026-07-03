@@ -84,7 +84,7 @@ export default function CrawlForm({
           onClick={handleSubmit}
           disabled={loading || !token.trim()}
           startIcon={
-            loading ? <CircularProgress size={20} color="inherit" : undefined}
+            loading ? <CircularProgress size={20} color="inherit" />: undefined
           }
         >
           {loading ? "Crawling..." : "Crawl"}

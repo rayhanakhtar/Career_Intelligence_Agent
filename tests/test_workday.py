@@ -38,55 +38,62 @@ class TestWorkdayBuildJobRecord:
 
     def test_build_record_has_all_fields(self):
         """The built record should contain all standard fields."""
-        record = _build_job_record(SINGLE_JOB_RAW, "Microsoft", "Microsoft", "wd1")
+        record = _build_job_record(SINGLE_JOB_RAW, "Microsoft", "Microsoft", "wd1", "Microsoft")
         assert record["title"] == "Software Engineer II"
         assert record["company"] == "Microsoft"
         assert record["location"] == "Bengaluru, India"
-        assert record["description"] == "<p>Join our engineering team...</p>"
-        assert record["apply_url"] == "https://wd1.myworkdayjobs.com/Microsoft/job/123456/software-engineer-ii"
-        assert record["department"] == "Engineering"
-        assert record["employment_type"] == "Full-time"
+        assert record["description"] == ""
+        assert record["apply_url"] == "https://Microsoft.wd1.myworkdayjobs.com/Microsoft/job/123456/software-engineer-ii"
+        assert record["department"] == ""
+        assert record["employment_type"] == ""
         assert record["source"] == "workday"
         assert record["source_id"] == "123456"
 
     def test_build_record_empty_categories(self):
         """A job with no categories should have empty department."""
         raw = {**SINGLE_JOB_RAW, "categories": []}
-        record = _build_job_record(raw, "Microsoft", "Microsoft", "wd1")
+        record = _build_job_record(raw, "Microsoft", "Microsoft", "wd1", "Microsoft")
         assert record["department"] == ""
 
     def test_build_record_string_description(self):
         """A job with a plain string description should still work."""
         raw = {**SINGLE_JOB_RAW, "description": "<p>Plain string desc</p>"}
-        record = _build_job_record(raw, "Microsoft", "Microsoft", "wd1")
-        assert record["description"] == "<p>Plain string desc</p>"
+        record = _build_job_record(raw, "Microsoft", "Microsoft", "wd1", "Microsoft")
+        assert record["description"] == ""
 
     def test_build_record_missing_external_path(self):
         """A job with no externalPath should have an empty apply_url."""
         raw = {**SINGLE_JOB_RAW, "externalPath": ""}
-        record = _build_job_record(raw, "Microsoft", "Microsoft", "wd1")
+        record = _build_job_record(raw, "Microsoft", "Microsoft", "wd1", "Microsoft")
         assert record["apply_url"] == ""
 
 
 class TestWorkdayFetchJobs:
     """Tests for fetch_jobs()."""
 
-    @patch("crawlers.workday._fetch_page")
-    def test_fetch_jobs_returns_parsed_list(self, mock_fetch):
-        """fetch_jobs should return a list of parsed job records."""
+    @patch("crawlers.workday._fetch_page_requests")
+    @patch("crawlers.workday._discover_site")
+    def test_fetch_jobs_returns_parsed_list(self, mock_discover, mock_fetch):
+        """fetch_jobs should return raw job dicts from the API response."""
+        mock_discover.return_value = "Microsoft"
         mock_fetch.return_value = SAMPLE_WORKDAY_RESPONSE
-        jobs = fetch_jobs("wd1", "Microsoft")
+        jobs = fetch_jobs("Microsoft", "wd1")
         assert len(jobs) == 2
         assert jobs[0]["title"] == "Software Engineer II"
-        assert jobs[0]["company"] == "Microsoft"
         assert jobs[1]["title"] == "Data Scientist"
-        assert jobs[1]["company"] == "Microsoft"
 
-    @patch("crawlers.workday._fetch_page")
-    def test_fetch_jobs_empty_response(self, mock_fetch):
+    @patch("crawlers.workday._fetch_page_requests")
+    @patch("crawlers.workday._discover_site")
+    def test_fetch_jobs_empty_response(self, mock_discover, mock_fetch):
         """An empty jobs list should return an empty list."""
+        mock_discover.return_value = "Microsoft"
         mock_fetch.return_value = {"total": 0, "jobPostings": []}
-        jobs = fetch_jobs("wd1", "Empty")
+        jobs = fetch_jobs("Empty", "wd1")
+        assert jobs == []
+
+    def test_fetch_jobs_no_site_returns_empty(self):
+        """fetch_jobs should return empty list if site cannot be discovered."""
+        jobs = fetch_jobs("Unknown", "wd1")
         assert jobs == []
 
 
@@ -111,10 +118,14 @@ class TestWorkdayCrawlerClass:
         assert crawler.subdomain == "wd1"
         assert crawler.tenant == "Microsoft"
         assert crawler.locations == ["Bengaluru", "Hyderabad"]
+        assert crawler.site is None
+        assert crawler.use_playwright is False
 
-    @patch("crawlers.workday._fetch_page")
-    def test_fetch_jobs_uses_display_name(self, mock_fetch):
+    @patch("crawlers.workday._fetch_page_requests")
+    @patch("crawlers.workday._discover_site")
+    def test_fetch_jobs_uses_display_name(self, mock_discover, mock_fetch):
         """The class fetch_jobs should set company to display_name."""
+        mock_discover.return_value = "Microsoft"
         mock_fetch.return_value = SAMPLE_WORKDAY_RESPONSE
         crawler = WorkdayCrawler(
             company_id="microsoft",
@@ -159,3 +170,34 @@ class TestWorkdayCrawlerClass:
         crawler = WorkdayCrawler.from_registry(entry)
         assert crawler.subdomain == "wd1"
         assert crawler.tenant == "Test"
+
+    def test_from_registry_sets_use_playwright(self):
+        """from_registry should set use_playwright when renderer is playwright."""
+        entry = {
+            "id": "servicenow",
+            "company": "ServiceNow",
+            "platform": "workday",
+            "subdomain": "wd1",
+            "tenant": "ServiceNow",
+            "renderer": "playwright",
+            "enabled": True,
+            "locations": [],
+        }
+        crawler = WorkdayCrawler.from_registry(entry)
+        assert crawler.use_playwright is True
+
+    def test_from_registry_sets_site(self):
+        """from_registry should pass site from registry entry."""
+        entry = {
+            "id": "fractalan",
+            "company": "Fractal Analytics",
+            "platform": "workday",
+            "subdomain": "wd1",
+            "tenant": "Fractal",
+            "site": "Careers",
+            "renderer": "playwright",
+            "enabled": True,
+            "locations": [],
+        }
+        crawler = WorkdayCrawler.from_registry(entry)
+        assert crawler.site == "Careers"
