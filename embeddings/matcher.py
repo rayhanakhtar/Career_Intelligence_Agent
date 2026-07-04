@@ -1,5 +1,7 @@
 """Match score computation from FAISS similarity distances."""
 
+from typing import cast
+
 import numpy as np
 
 
@@ -23,4 +25,4 @@ def compute_match_scores(scores: list[float]) -> list[float]:
     arr = np.clip(arr, -1.0, 1.0)
     # Scale: (-1, 1) → (0, 1) → (0, 100)
     match_scores = ((arr + 1.0) / 2.0) * 100.0
-    return match_scores.tolist()
+    return cast(list[float], match_scores.tolist())

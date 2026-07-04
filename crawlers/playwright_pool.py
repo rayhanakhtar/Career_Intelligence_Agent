@@ -7,7 +7,7 @@ every crawl.
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ class PlaywrightPool:
                 await page.goto(url, timeout=timeout, wait_until=wait_until)
                 html = await page.content()
                 logger.debug("Fetched %s (%d bytes)", url, len(html))
-                return html
+                return cast(str | None, html)
             except Exception as e:
                 logger.warning("Playwright navigation failed for %s: %s", url, e)
                 return None

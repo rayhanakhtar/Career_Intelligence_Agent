@@ -13,9 +13,9 @@ import json
 import logging
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -132,10 +132,9 @@ async def _is_maintenance_page(page: Any) -> bool:
         if "currently unavailable" in title.lower():
             return True
         url = page.url
-        if "maintenance" in url.lower():
-            return True
-        return False
-    except Exception:
+        return "maintenance" in url.lower()
+    except Exception as e:
+        logger.warning("_is_maintenance_page failed: %s", e)
         return False
 
 
@@ -153,7 +152,8 @@ async def _check_page_has_jobs(page: Any) -> bool:
             }
         """)
         return bool(result)
-    except Exception:
+    except Exception as e:
+        logger.warning("_check_page_has_jobs failed: %s", e)
         return False
 
 
@@ -164,9 +164,9 @@ async def _extract_csrf_token(page: Any) -> str:
             return ""
         for part in raw.split("; "):
             if part.startswith("CALYPSO_CSRF_TOKEN="):
-                return part.split("=", 1)[1]
-    except Exception:
-        pass
+                return cast(str, part.split("=", 1)[1])
+    except Exception as e:
+        logger.warning("_extract_csrf_token failed: %s", e)
     return ""
 
 
@@ -207,8 +207,8 @@ async def test_one(page: Any, entry: dict) -> CompanyResult:
                     if candidate and await _check_page_has_jobs(page):
                         discovered_site = candidate
                         nav_ok = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Site discovery navigation failed for %s/%s: %s", subdomain, tenant, e)
 
             if not discovered_site:
                 for pattern in _SITE_PATTERNS:
@@ -221,15 +221,15 @@ async def test_one(page: Any, entry: dict) -> CompanyResult:
                             discovered_site = candidate
                             nav_ok = True
                             break
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("Pattern navigation failed for %s/%s (%s): %s", subdomain, tenant, candidate, e)
                         continue
 
             discovery_duration = time.time() - t_disc
             navigation_ok = nav_ok or discovered_site is not None
 
-        if not discovered_site and not error:
-            if await _is_maintenance_page(page):
-                error = "Workday site is in maintenance mode (global outage)"
+        if not discovered_site and not error and await _is_maintenance_page(page):
+            error = "Workday site is in maintenance mode (global outage)"
 
         if discovered_site:
             # Navigate to the correct careers page (if not already there).
@@ -247,7 +247,11 @@ async def test_one(page: Any, entry: dict) -> CompanyResult:
             # Extract CSRF token and call API via page.evaluate.
             csrf_token = await _extract_csrf_token(page)
             api_url = build_api_url(tenant, subdomain, discovered_site)
-            script = _DIAGNOSTIC_SCRIPT_TEMPLATE.replace("API_URL", json.dumps(api_url)).replace("PAGE_SIZE", str(_PAGE_SIZE)).replace("CSRF_TOKEN", json.dumps(csrf_token))
+            script = (
+                _DIAGNOSTIC_SCRIPT_TEMPLATE.replace("API_URL", json.dumps(api_url))
+                .replace("PAGE_SIZE", str(_PAGE_SIZE))
+                .replace("CSRF_TOKEN", json.dumps(csrf_token))
+            )
             try:
                 result = await page.evaluate(script)
                 api_http_status = result.get("status")
@@ -327,8 +331,8 @@ def generate_report(results: list[CompanyResult]) -> str:
     lines.append("")
     lines.append("## Summary")
     lines.append("")
-    lines.append(f"| Metric | Value |")
-    lines.append(f"|--------|-------|")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
     lines.append(f"| Total companies tested | {len(results)} |")
     lines.append(f"| [OK] Working | {working} |")
     lines.append(f"| [--] No active jobs | {no_jobs} |")
@@ -344,8 +348,8 @@ def generate_report(results: list[CompanyResult]) -> str:
         status_map = {"working": "OK", "no_jobs": "--", "warnings": "!!", "failed": "XX"}
         lines.append(f"### [{status_map[r.status]}] {r.company} (`{r.company_id}`)")
         lines.append("")
-        lines.append(f"| Field | Value |")
-        lines.append(f"|-------|-------|")
+        lines.append("| Field | Value |")
+        lines.append("|-------|-------|")
         lines.append(f"| Careers URL | `{r.careers_url}` |")
         lines.append(f"| Tenant / Subdomain | `{r.tenant}` / `{r.subdomain}` |")
         lines.append(f"| Site (configured) | `{r.site_configured or '—'}` |")
@@ -433,10 +437,7 @@ def main() -> int:
     with open(registry_path) as f:
         registry = yaml.safe_load(f)
 
-    companies = [
-        c for c in registry.get("companies", [])
-        if c.get("platform") == "workday" and c.get("enabled", True)
-    ]
+    companies = [c for c in registry.get("companies", []) if c.get("platform") == "workday" and c.get("enabled", True)]
 
     print(f"Loaded {len(companies)} Workday companies from registry")
     print("Starting smoke test (one browser session per company)...")
@@ -465,24 +466,26 @@ def main() -> int:
                 except Exception as e:
                     print(f"[XX] exception: {e}")
                     tenant = entry.get("tenant", entry["id"])
-                    results.append(CompanyResult(
-                        company=company,
-                        company_id=entry["id"],
-                        tenant=tenant,
-                        subdomain=entry.get("subdomain", "wd1"),
-                        careers_url=entry.get("careers_url", ""),
-                        site_configured=entry.get("site"),
-                        site_discovered=None,
-                        navigation_ok=False,
-                        api_http_status=None,
-                        api_response_preview="",
-                        job_count=0,
-                        total_reported=0,
-                        pages_fetched=0,
-                        duration_seconds=0,
-                        discovery_duration=0,
-                        error=str(e),
-                    ))
+                    results.append(
+                        CompanyResult(
+                            company=company,
+                            company_id=entry["id"],
+                            tenant=tenant,
+                            subdomain=entry.get("subdomain", "wd1"),
+                            careers_url=entry.get("careers_url", ""),
+                            site_configured=entry.get("site"),
+                            site_discovered=None,
+                            navigation_ok=False,
+                            api_http_status=None,
+                            api_response_preview="",
+                            job_count=0,
+                            total_reported=0,
+                            pages_fetched=0,
+                            duration_seconds=0,
+                            discovery_duration=0,
+                            error=str(e),
+                        )
+                    )
                 finally:
                     await page.close()
 

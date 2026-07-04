@@ -4,14 +4,11 @@ import json
 import os
 import tempfile
 
-from crawlers.base import BaseCrawler
 from crawlers.greenhouse import GreenhouseCrawler
-from crawlers.lever import LeverCrawler
 from crawlers.registry import (
-    _crawler_classes,
     build_crawlers,
-    get_company,
     get_companies_by_platform,
+    get_company,
     get_crawler_class,
     get_enabled_companies,
     load_companies,
@@ -66,9 +63,7 @@ class TestLoadSaveCompanies:
 
     def test_load_save_round_trip(self):
         """Companies saved to JSON should load back identically."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             tmp_path = f.name
             json.dump(SAMPLE_COMPANIES, f)
 
@@ -95,9 +90,7 @@ class TestGetEnabledCompanies:
 
     def test_filters_disabled(self):
         """Only enabled companies should be returned."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             tmp_path = f.name
             json.dump(SAMPLE_COMPANIES, f)
 
@@ -117,9 +110,7 @@ class TestGetCompany:
 
     def test_get_by_id_found(self):
         """get_company should return the matching company dict."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             tmp_path = f.name
             json.dump(SAMPLE_COMPANIES, f)
 
@@ -132,9 +123,7 @@ class TestGetCompany:
 
     def test_get_by_id_not_found(self):
         """get_company should return None for a missing id."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             tmp_path = f.name
             json.dump(SAMPLE_COMPANIES, f)
 
@@ -150,9 +139,7 @@ class TestGetCompaniesByPlatform:
 
     def test_filters_by_platform(self):
         """Only companies with the matching platform should be returned."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             tmp_path = f.name
             json.dump(SAMPLE_COMPANIES, f)
 
@@ -172,9 +159,7 @@ class TestBuildCrawlers:
 
     def test_build_known_platforms(self):
         """build_crawlers should instantiate crawlers for registered platforms."""
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             tmp_path = f.name
             json.dump(SAMPLE_COMPANIES, f)
 
@@ -200,9 +185,7 @@ class TestBuildCrawlers:
                 "locations": [],
             }
         ]
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, encoding="utf-8"
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
             tmp_path = f.name
             json.dump(companies_no_match, f)
 

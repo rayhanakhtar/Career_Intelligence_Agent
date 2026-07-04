@@ -1,8 +1,6 @@
 """SQLite database schema for job storage."""
 
 import sqlite3
-from typing import Optional
-
 
 CREATE_JOBS_TABLE = """
 CREATE TABLE IF NOT EXISTS jobs (

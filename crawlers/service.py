@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CrawlResult:
     """Outcome of crawling a single company."""
+
     company: str
     platform: str
     status: str  # "success", "no_jobs", "blocked", "failed"
@@ -32,6 +33,7 @@ class CrawlResult:
 @dataclass
 class CrawlSummary:
     """Aggregated results of a full crawl run."""
+
     total_companies: int = 0
     successful: int = 0
     no_jobs: int = 0
@@ -172,6 +174,7 @@ class CrawlService:
     def _invalidate_index() -> None:
         """Invalidate the FAISS index cache so next search picks up new jobs."""
         from pipeline.rank import invalidate_index_cache
+
         invalidate_index_cache()
 
     def _crawl_and_store(self, crawler: Any) -> int:

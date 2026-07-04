@@ -29,7 +29,7 @@ class CrawlScheduler:
 
     def __init__(self, db_path: str | None = None) -> None:
         self.scheduler = AsyncIOScheduler()
-        self.db_path = db_path or os.getenv("DATABASE_PATH", "jobs.db")
+        self.db_path = db_path if db_path is not None else os.getenv("DATABASE_PATH", "jobs.db")
         self.enabled = os.getenv("SCHEDULER_ENABLED", "true").lower() in ("true", "1", "yes")
         self.interval_hours = int(os.getenv("SCHEDULER_INTERVAL_HOURS", "6"))
 

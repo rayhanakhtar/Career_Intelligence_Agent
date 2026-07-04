@@ -21,6 +21,7 @@ class TestPlaywrightPool:
         """Calling close() multiple times should not raise."""
         pool = PlaywrightPool()
         import asyncio
+
         asyncio.run(pool.close())
         asyncio.run(pool.close())  # Second call should be no-op.
         assert pool._closed is True
@@ -29,6 +30,7 @@ class TestPlaywrightPool:
         """fetch_page should return None when Playwright is not installed."""
         pool = PlaywrightPool()
         import asyncio
+
         result = asyncio.run(pool.fetch_page("https://example.com"))
         assert result is None
 
@@ -37,6 +39,7 @@ class TestPlaywrightPool:
         pool = PlaywrightPool()
         pool._closed = True
         import asyncio
+
         result = asyncio.run(pool.fetch_page("https://example.com"))
         assert result is None
 
@@ -46,8 +49,9 @@ class TestPlaywrightPoolSingleton:
 
     def test_get_pool_returns_singleton(self):
         """get_pool should return the same instance on repeated calls."""
-        from crawlers.playwright_pool import get_pool, close_pool
         import asyncio
+
+        from crawlers.playwright_pool import close_pool, get_pool
 
         asyncio.run(close_pool())  # Reset.
 
@@ -59,8 +63,9 @@ class TestPlaywrightPoolSingleton:
 
     def test_close_pool_resets_singleton(self):
         """close_pool should reset the singleton to None."""
-        from crawlers.playwright_pool import get_pool, close_pool, _pool
         import asyncio
+
+        from crawlers.playwright_pool import _pool, close_pool, get_pool
 
         asyncio.run(close_pool())  # Reset.
         p1 = get_pool()

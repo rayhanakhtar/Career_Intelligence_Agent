@@ -21,6 +21,7 @@ class TestCrawlAll:
             assert result == {}
         finally:
             import os
+
             os.unlink(db_path)
 
     @patch("crawlers.service.build_crawlers")
@@ -58,6 +59,7 @@ class TestCrawlAll:
             result = crawl_all(db_path)
         finally:
             import os
+
             os.unlink(db_path)
 
         assert result == {"Company A": 2, "Company B": 1}
@@ -92,6 +94,7 @@ class TestCrawlAll:
             result = crawl_all(db_path)
         finally:
             import os
+
             os.unlink(db_path)
 
         assert result == {"Good Co": 1}
@@ -137,4 +140,5 @@ class TestCrawlAll:
                 conn.close()
         finally:
             import os
+
             os.unlink(db_path)

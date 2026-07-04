@@ -1,10 +1,8 @@
 """Unit tests for the embedding module."""
 
 import numpy as np
-import pytest
 
 from embeddings.embedder import build_job_text, embed, embed_batch
-
 
 SAMPLE_JOB = {
     "id": 1,

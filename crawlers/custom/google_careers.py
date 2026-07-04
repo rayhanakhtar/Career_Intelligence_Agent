@@ -21,7 +21,7 @@ def _parse_jobs_from_html(html: str) -> list[dict[str, str]]:
 
     for script in soup.find_all("script", type="application/ld+json"):
         try:
-            data = json.loads(script.string)
+            data = json.loads(str(script.string or ""))
         except (json.JSONDecodeError, TypeError):
             continue
         if not isinstance(data, list):
@@ -30,15 +30,17 @@ def _parse_jobs_from_html(html: str) -> list[dict[str, str]]:
             if not isinstance(item, dict):
                 continue
             if item.get("@type") == "JobPosting":
-                jobs.append({
-                    "title": item.get("title", ""),
-                    "location": item.get("jobLocation", {}).get("address", {}).get("addressLocality", ""),
-                    "description": item.get("description", ""),
-                    "apply_url": item.get("url", ""),
-                    "posted_at": item.get("datePosted", ""),
-                    "department": "",
-                    "employment_type": item.get("employmentType", ""),
-                })
+                jobs.append(
+                    {
+                        "title": item.get("title", ""),
+                        "location": item.get("jobLocation", {}).get("address", {}).get("addressLocality", ""),
+                        "description": item.get("description", ""),
+                        "apply_url": item.get("url", ""),
+                        "posted_at": item.get("datePosted", ""),
+                        "department": "",
+                        "employment_type": item.get("employmentType", ""),
+                    }
+                )
     return jobs
 
 

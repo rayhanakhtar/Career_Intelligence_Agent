@@ -42,11 +42,7 @@ def _get_cached_index(db_path: str) -> FAISSVectorStore | None:
         conn.close()
 
     # If the DB path and job count match the cached index, reuse it.
-    if (
-        _cached_db_path == db_path
-        and _cached_job_count == current_count
-        and _cached_vector_store is not None
-    ):
+    if _cached_db_path == db_path and _cached_job_count == current_count and _cached_vector_store is not None:
         logger.debug("Reusing cached FAISS index (%d jobs)", current_count)
         return _cached_vector_store
 
@@ -189,7 +185,7 @@ def rank_jobs(
     # 8. Join with job metadata and sort by match score descending.
     job_map = {job["id"]: job for job in all_jobs}
     ranked: list[dict[str, Any]] = []
-    for job_id, match_score in zip(job_ids_found, match_scores):
+    for job_id, match_score in zip(job_ids_found, match_scores, strict=True):
         job = job_map.get(job_id)
         if job is None:
             continue
@@ -222,18 +218,14 @@ def format_table(ranked: list[dict[str, Any]]) -> str:
         company = job.get("company", "")[:18]
         title = job.get("title", "")[:38]
         location = job.get("location", "")[:28]
-        lines.append(
-            f"  {i:<3} {score:<8.1f} {company:<20} {title:<40} {location:<30}"
-        )
+        lines.append(f"  {i:<3} {score:<8.1f} {company:<20} {title:<40} {location:<30}")
 
     return "\n".join(lines)
 
 
 def main() -> None:
     """CLI entry point for the ranking pipeline."""
-    parser = argparse.ArgumentParser(
-        description="Rank jobs in a SQLite database against a resume."
-    )
+    parser = argparse.ArgumentParser(description="Rank jobs in a SQLite database against a resume.")
     parser.add_argument(
         "--db",
         default="jobs.db",
@@ -265,7 +257,7 @@ def main() -> None:
 
     # Read resume text.
     try:
-        with open(args.resume, "r", encoding="utf-8") as f:
+        with open(args.resume, encoding="utf-8") as f:
             resume_text = f.read().strip()
     except FileNotFoundError:
         print(f"Error: resume file not found: {args.resume}")

@@ -2,7 +2,6 @@
 
 import logging
 import os
-from typing import Optional
 
 import faiss
 import numpy as np
@@ -24,7 +23,7 @@ class FAISSVectorStore:
     """
 
     def __init__(self):
-        self.index: Optional[faiss.Index] = None
+        self.index: faiss.Index | None = None
         self.id_map: list[int] = []
         self.dimension: int = 0
 
@@ -39,9 +38,7 @@ class FAISSVectorStore:
             ValueError: If the number of embeddings does not match the number of ids.
         """
         if len(embeddings) != len(ids):
-            raise ValueError(
-                f"Embeddings count ({len(embeddings)}) must match ids count ({len(ids)})"
-            )
+            raise ValueError(f"Embeddings count ({len(embeddings)}) must match ids count ({len(ids)})")
         if len(embeddings) == 0:
             logger.warning("Building FAISS index with zero vectors")
             self.dimension = self.dimension or 384
@@ -81,10 +78,7 @@ class FAISSVectorStore:
         id_map_path = os.path.join(path, "id_map.npy")
 
         if not os.path.exists(index_path) or not os.path.exists(id_map_path):
-            raise FileNotFoundError(
-                f"FAISS index files not found in {path}. "
-                f"Expected {index_path} and {id_map_path}"
-            )
+            raise FileNotFoundError(f"FAISS index files not found in {path}. Expected {index_path} and {id_map_path}")
 
         self.index = faiss.read_index(index_path)
         self.id_map = list(np.load(id_map_path))
@@ -95,9 +89,7 @@ class FAISSVectorStore:
             self.index.d,
         )
 
-    def search(
-        self, query_vector: NDArray[np.float32], k: int = 10
-    ) -> list[tuple[int, float]]:
+    def search(self, query_vector: NDArray[np.float32], k: int = 10) -> list[tuple[int, float]]:
         """Search for the k nearest neighbours of a query vector.
 
         Args:
@@ -119,7 +111,7 @@ class FAISSVectorStore:
         distances, indices = self.index.search(query_vector, k)
 
         results: list[tuple[int, float]] = []
-        for dist, idx in zip(distances[0], indices[0]):
+        for dist, idx in zip(distances[0], indices[0], strict=True):
             if idx == -1:
                 continue
             job_id = self.id_map[idx]

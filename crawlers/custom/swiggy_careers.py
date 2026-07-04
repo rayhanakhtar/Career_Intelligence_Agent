@@ -20,6 +20,7 @@ MYNEXTHIRE_HEADERS = {
 
 
 def _parse_jobs(api_response: dict) -> list[dict[str, str]]:
+    """Parse Swiggy Careers API response into standard job records."""
     jobs: list[dict[str, str]] = []
     for item in api_response.get("reqDetailsBOList") or []:
         if not isinstance(item, dict):
@@ -28,29 +29,23 @@ def _parse_jobs(api_response: dict) -> list[dict[str, str]]:
         if not title:
             continue
         location = (item.get("location") or item.get("locationAddress") or "").strip()
-        exp_min = item.get("expMin")
-        exp_max = item.get("expMax")
-        exp_str = ""
-        if exp_min is not None and exp_max is not None:
-            exp_str = f"{int(exp_min)} - {int(exp_max)} Years"
-        elif exp_min is not None:
-            exp_str = f"{int(exp_min)}+ Years"
-
         description = (item.get("jdDisplay") or "").strip()
         department = (item.get("buName") or "").strip()
         employment_type = (item.get("employmentType") or "").strip()
         posted_at = (item.get("approvedOn") or "").strip()
         source_id = str(item.get("reqId", ""))
 
-        jobs.append({
-            "title": title,
-            "location": location,
-            "description": description,
-            "apply_url": f"https://careers.swiggy.com/#/careers?reqId={source_id}",
-            "department": department,
-            "employment_type": employment_type,
-            "posted_at": posted_at,
-        })
+        jobs.append(
+            {
+                "title": title,
+                "location": location,
+                "description": description,
+                "apply_url": f"https://careers.swiggy.com/#/careers?reqId={source_id}",
+                "department": department,
+                "employment_type": employment_type,
+                "posted_at": posted_at,
+            }
+        )
     return jobs
 
 

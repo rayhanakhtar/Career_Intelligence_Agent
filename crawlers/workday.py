@@ -9,9 +9,8 @@ Strategy (in order):
 import asyncio
 import json
 import logging
-import re
 import time
-from typing import Any
+from typing import Any, cast
 
 import requests
 
@@ -51,7 +50,11 @@ def _build_careers_url(tenant: str, subdomain: str, site: str | None = None) -> 
 
 
 def _fetch_page_requests(
-    tenant: str, subdomain: str, site: str, offset: int = 0, limit: int = _PAGE_SIZE,
+    tenant: str,
+    subdomain: str,
+    site: str,
+    offset: int = 0,
+    limit: int = _PAGE_SIZE,
     session: requests.Session | None = None,
 ) -> dict[str, Any] | None:
     url = _build_api_url(tenant, subdomain, site)
@@ -71,21 +74,44 @@ def _fetch_page_requests(
                 backoff = 2 ** (attempt - 1)
                 logger.info(
                     "Retry %d/%d for Workday %s/%s (site=%s) offset=%d backoff=%ds",
-                    attempt - 1, _MAX_PAGE_RETRIES, subdomain, tenant, site, offset, backoff,
+                    attempt - 1,
+                    _MAX_PAGE_RETRIES,
+                    subdomain,
+                    tenant,
+                    site,
+                    offset,
+                    backoff,
                 )
                 time.sleep(backoff)
 
             response = sess.post(url, json=payload, headers=headers, timeout=30)
             response.raise_for_status()
-            return response.json()
+            return cast(dict[str, Any] | None, response.json())
 
         except requests.exceptions.Timeout as e:
             last_error = e
-            logger.warning("Timeout on Workday %s/%s (site=%s) offset=%d (attempt %d/%d)", subdomain, tenant, site, offset, attempt, _MAX_PAGE_RETRIES)
+            logger.warning(
+                "Timeout on Workday %s/%s (site=%s) offset=%d (attempt %d/%d)",
+                subdomain,
+                tenant,
+                site,
+                offset,
+                attempt,
+                _MAX_PAGE_RETRIES,
+            )
         except requests.exceptions.HTTPError as e:
             last_error = e
             status = e.response.status_code if e.response is not None else 0
-            logger.warning("HTTP %d on Workday %s/%s (site=%s) offset=%d (attempt %d/%d)", status, subdomain, tenant, site, offset, attempt, _MAX_PAGE_RETRIES)
+            logger.warning(
+                "HTTP %d on Workday %s/%s (site=%s) offset=%d (attempt %d/%d)",
+                status,
+                subdomain,
+                tenant,
+                site,
+                offset,
+                attempt,
+                _MAX_PAGE_RETRIES,
+            )
             if status in (401, 403, 406, 422):
                 return None
         except requests.exceptions.RequestException as e:
@@ -97,7 +123,8 @@ def _fetch_page_requests(
 
 
 def _discover_site(
-    tenant: str, subdomain: str,
+    tenant: str,
+    subdomain: str,
 ) -> str | None:
     for pattern in _SITE_PATTERNS:
         site = pattern.format(tenant=tenant)
@@ -123,7 +150,9 @@ def _discover_site(
     return None
 
 
-def _build_job_record(job: dict[str, Any], display_name: str, tenant: str, subdomain: str, site: str) -> dict[str, Any]:
+def _build_job_record(
+    job: dict[str, Any], display_name: str, tenant: str, subdomain: str, _site: str
+) -> dict[str, Any]:
     ext_path = job.get("externalPath") or ""
     if ext_path.startswith("/"):
         host = _build_workday_host(tenant, subdomain)
@@ -158,9 +187,7 @@ async def _is_maintenance_page(page: Any) -> bool:
         if "currently unavailable" in title.lower():
             return True
         url = page.url
-        if "maintenance" in url.lower():
-            return True
-        return False
+        return "maintenance" in url.lower()
     except Exception:
         return False
 
@@ -197,7 +224,7 @@ async def _discover_site_on_page(page: Any, tenant: str, subdomain: str) -> str 
 
     # Step 1 — navigate to base URL and capture any redirect path.
     try:
-        resp = await page.goto(base_url, timeout=20000, wait_until="domcontentloaded")
+        await page.goto(base_url, timeout=20000, wait_until="domcontentloaded")
         await asyncio.sleep(3)
         final_url = page.url
         # If the final URL has a path component beyond "/", use it as site.
@@ -206,9 +233,9 @@ async def _discover_site_on_page(page: Any, tenant: str, subdomain: str) -> str 
             candidate = path.lstrip("/")
             if candidate and await _check_page_has_jobs(page):
                 logger.info("Discovered Workday site '%s' for %s/%s via redirect", candidate, subdomain, tenant)
-                return candidate
-    except Exception:
-        pass
+                return cast(str | None, candidate)
+    except Exception as e:
+        logger.warning("Site discovery navigation failed for %s/%s: %s", subdomain, tenant, e)
 
     # Step 2 — try each pattern URL.
     for pattern in _SITE_PATTERNS:
@@ -219,7 +246,9 @@ async def _discover_site_on_page(page: Any, tenant: str, subdomain: str) -> str 
             await asyncio.sleep(2)
             # If navigation didn't throw and page looks like Workday.
             if await _check_page_has_jobs(page):
-                logger.info("Discovered Workday site '%s' for %s/%s via pattern '%s'", candidate, subdomain, tenant, pattern)
+                logger.info(
+                    "Discovered Workday site '%s' for %s/%s via pattern '%s'", candidate, subdomain, tenant, pattern
+                )
                 return candidate
         except Exception:
             continue
@@ -235,9 +264,9 @@ async def _extract_csrf_token(page: Any) -> str:
             return ""
         for part in raw.split("; "):
             if part.startswith("CALYPSO_CSRF_TOKEN="):
-                return part.split("=", 1)[1]
-    except Exception:
-        pass
+                return cast(str, part.split("=", 1)[1])
+    except Exception as e:
+        logger.warning("Failed to extract CSRF token: %s", e)
     return ""
 
 
@@ -258,11 +287,15 @@ async def _fetch_jobs_on_page(page: Any, tenant: str, subdomain: str, site: str)
             let total = Infinity;
             const pageSize = {json.dumps(page_size)};
             const apiUrl = {json.dumps(api_url)};
-            const headers = {json.dumps({
+            const headers = {
+        json.dumps(
+            {
                 "Content-Type": "application/json",
                 "Accept": "application/json",
                 "x-calypso-csrf-token": csrf_token,
-            })};
+            }
+        )
+    };
 
             while (offset < total) {{
                 try {{
@@ -301,7 +334,9 @@ async def _fetch_jobs_on_page(page: Any, tenant: str, subdomain: str, site: str)
 
 
 def _fetch_workday_playwright(
-    tenant: str, subdomain: str, site: str | None = None,
+    tenant: str,
+    subdomain: str,
+    site: str | None = None,
 ) -> list[dict[str, Any]] | None:
     """Single Playwright session: discover site (if needed) and fetch all jobs.
 
@@ -365,7 +400,9 @@ def _fetch_workday_playwright(
 # ── Public API ───────────────────────────────────────────────────────────────
 
 
-def fetch_jobs(tenant: str, subdomain: str, site: str | None = None, use_playwright: bool = False) -> list[dict[str, Any]]:
+def fetch_jobs(
+    tenant: str, subdomain: str, site: str | None = None, use_playwright: bool = False
+) -> list[dict[str, Any]]:
     """Fetch all active jobs from a Workday tenant.
 
     Strategy:
@@ -446,8 +483,7 @@ class WorkdayCrawler(BaseCrawler):
     def fetch_jobs(self) -> list[dict[str, Any]]:
         raw_jobs = fetch_jobs(self.tenant, self.subdomain, self.site, use_playwright=self.use_playwright)
         return [
-            _build_job_record(job, self.display_name, self.tenant, self.subdomain, self.site or "")
-            for job in raw_jobs
+            _build_job_record(job, self.display_name, self.tenant, self.subdomain, self.site or "") for job in raw_jobs
         ]
 
     @classmethod

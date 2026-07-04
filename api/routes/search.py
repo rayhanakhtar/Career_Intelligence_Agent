@@ -3,10 +3,8 @@
 import logging
 import os
 
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, UploadFile, status
 from fastapi import HTTPException as FastAPIHTTPException
-from fastapi import status
-from starlette.responses import JSONResponse
 
 from api.extractor import extract_text
 from api.models import ErrorResponse, JobWithScore, SearchRequest, SearchResponse
@@ -84,7 +82,7 @@ async def search_jobs_upload(
         raise FastAPIHTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
 
     if not resume_text.strip():
         raise FastAPIHTTPException(
@@ -92,11 +90,7 @@ async def search_jobs_upload(
             detail="No extractable text found in the uploaded file",
         )
 
-    preferred_locations = (
-        [loc.strip() for loc in locations.split(",") if loc.strip()]
-        if locations
-        else None
-    )
+    preferred_locations = [loc.strip() for loc in locations.split(",") if loc.strip()] if locations else None
 
     ranked = _run_search(
         resume_text=resume_text,

@@ -1,7 +1,7 @@
 """Text embedding via sentence-transformers (all-MiniLM-L6-v2)."""
 
 import logging
-from typing import Any, Optional
+from typing import Any, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -19,7 +19,7 @@ def _get_model() -> SentenceTransformer:
     Returns:
         A SentenceTransformer instance.
     """
-    return SentenceTransformer(_MODEL_NAME)
+    return cast(SentenceTransformer, SentenceTransformer(_MODEL_NAME))
 
 
 def build_job_text(record: dict[str, Any]) -> str:

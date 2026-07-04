@@ -1,7 +1,6 @@
 """ATS platform detection via URL patterns and page HTML analysis."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -13,7 +12,8 @@ class ATSDetectionResult:
         confidence: Certainty level from 0.0 (no match) to 1.0 (exact match).
         reason: Machine-readable label explaining how the match was made.
     """
-    ats_name: Optional[str]
+
+    ats_name: str | None
     confidence: float
     reason: str
 
@@ -49,7 +49,8 @@ _META_CLUES: dict[str, str] = {
     "ashby": "ashby",
 }
 
-def detect_ats(url: str, page_html: Optional[str] = None) -> ATSDetectionResult:
+
+def detect_ats(url: str, page_html: str | None = None) -> ATSDetectionResult:
     """Detect the ATS platform from a career page URL and optional HTML.
 
     Uses a two-layer cascade:

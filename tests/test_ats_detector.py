@@ -1,6 +1,6 @@
 """Unit tests for the ATS detection module."""
 
-from crawlers.ats_detector import detect_ats, ATSDetectionResult
+from crawlers.ats_detector import ATSDetectionResult, detect_ats
 
 
 class TestATSDetector:

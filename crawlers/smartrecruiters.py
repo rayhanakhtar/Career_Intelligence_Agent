@@ -98,10 +98,7 @@ class SmartRecruitersCrawler(BaseCrawler):
 
     def fetch_jobs(self) -> list[dict[str, Any]]:
         raw_jobs = fetch_jobs(self.board_token)
-        return [
-            {**job, "company": self.display_name}
-            for job in raw_jobs
-        ]
+        return [{**job, "company": self.display_name} for job in raw_jobs]
 
     @classmethod
     def from_registry(cls, entry: dict[str, Any]) -> "SmartRecruitersCrawler":

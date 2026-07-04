@@ -29,6 +29,7 @@ def _extract_token(html: str) -> str | None:
 
 
 def _parse_jobs(api_response: dict) -> list[dict[str, str]]:
+    """Parse Tredence (RippleHire) API response into standard job records."""
     jobs: list[dict[str, str]] = []
     for item in api_response.get("jobVoList") or []:
         if not isinstance(item, dict):
@@ -37,20 +38,21 @@ def _parse_jobs(api_response: dict) -> list[dict[str, str]]:
         if not title:
             continue
         location = (item.get("jobLocation") or item.get("locations") or "").strip()
-        exp_str = (item.get("jobReqExp") or "").strip()
         description = (item.get("jobDesc") or "").strip()
         department = (item.get("bussinessUnit") or "").strip()
         source_id = str(item.get("jobSeq") or item.get("jobId") or "")
 
-        jobs.append({
-            "title": title,
-            "location": location,
-            "description": description,
-            "apply_url": f"{RIPPLEHIRE_BASE}/candidate/?token={{token}}&source=CAREERSITE#/job/{source_id}",
-            "department": department,
-            "employment_type": "",
-            "posted_at": "",
-        })
+        jobs.append(
+            {
+                "title": title,
+                "location": location,
+                "description": description,
+                "apply_url": f"{RIPPLEHIRE_BASE}/candidate/?token={{token}}&source=CAREERSITE#/job/{source_id}",
+                "department": department,
+                "employment_type": "",
+                "posted_at": "",
+            }
+        )
     return jobs
 
 
@@ -86,13 +88,15 @@ class TredenceCrawler(BaseCrawler):
         headers = {**HEADERS, "referer": referer}
 
         payload_data = {
-            "careerSiteUrlParams": json.dumps({
-                "page": 0,
-                "search": "*:*",
-                "token": token,
-                "source": "CAREERSITE",
-                "pagesize": 200,
-            }),
+            "careerSiteUrlParams": json.dumps(
+                {
+                    "page": 0,
+                    "search": "*:*",
+                    "token": token,
+                    "source": "CAREERSITE",
+                    "pagesize": 200,
+                }
+            ),
             "lang": "en",
         }
 

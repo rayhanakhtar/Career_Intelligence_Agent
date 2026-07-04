@@ -9,8 +9,10 @@ from api.main import app
 
 def _override_get_db(db_with_jobs):
     """Create a dependency override function bound to the given connection."""
+
     def _get_db_override():
         yield db_with_jobs
+
     return _get_db_override
 
 
@@ -21,8 +23,10 @@ class TestListJobs:
         """GET /jobs on an empty database should return an empty page."""
         app.dependency_overrides.clear()
         import sqlite3
+
         conn = sqlite3.connect(":memory:", check_same_thread=False)
         from database.schema import create_tables
+
         create_tables(conn)
 
         app.dependency_overrides[get_db] = _override_get_db(conn)
@@ -53,9 +57,18 @@ class TestListJobs:
         response = client.get("/jobs")
         item = response.json()["items"][0]
         expected_keys = {
-            "id", "title", "company", "location", "description",
-            "apply_url", "department", "employment_type", "posted_at",
-            "source", "source_id", "created_at",
+            "id",
+            "title",
+            "company",
+            "location",
+            "description",
+            "apply_url",
+            "department",
+            "employment_type",
+            "posted_at",
+            "source",
+            "source_id",
+            "created_at",
         }
         assert set(item.keys()) == expected_keys
 

@@ -1,5 +1,6 @@
 """Crawlers package — platform-specific job board scrapers."""
 
+from crawlers.ashby import AshbyCrawler
 from crawlers.base import BaseCrawler
 from crawlers.custom import (
     AmazonCrawler,
@@ -18,10 +19,9 @@ from crawlers.custom import (
 )
 from crawlers.greenhouse import GreenhouseCrawler
 from crawlers.lever import LeverCrawler
-from crawlers.ashby import AshbyCrawler
+from crawlers.registry import register_crawler
 from crawlers.smartrecruiters import SmartRecruitersCrawler
 from crawlers.workable import WorkableCrawler
-from crawlers.registry import register_crawler
 from crawlers.workday import WorkdayCrawler
 
 register_crawler("greenhouse", GreenhouseCrawler)

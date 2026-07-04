@@ -4,10 +4,9 @@ import responses
 
 from crawlers.lever import (
     LeverCrawler,
-    fetch_jobs,
     _build_job_record,
+    fetch_jobs,
 )
-
 
 SAMPLE_LEVER_RESPONSE = [
     {

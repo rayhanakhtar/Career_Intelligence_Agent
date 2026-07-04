@@ -9,24 +9,26 @@ class TestBaseCrawler:
     def test_cannot_instantiate_directly(self):
         """BaseCrawler should not be instantiable directly (abstract)."""
         try:
-            BaseCrawler("test", "Test Company")  # type: ignore
-            assert False, "Should have raised TypeError"
+            BaseCrawler("test", "Test Company")
+            raise AssertionError("Should have raised TypeError")
         except TypeError:
             pass
 
     def test_subclass_must_implement_fetch_jobs(self):
         """A subclass that doesn't implement fetch_jobs should not be instantiable."""
+
         class Incomplete(BaseCrawler):
             pass
 
         try:
-            Incomplete("x", "X")  # type: ignore
-            assert False, "Should have raised TypeError"
+            Incomplete("x", "X")
+            raise AssertionError("Should have raised TypeError")
         except TypeError:
             pass
 
     def test_concrete_subclass_can_be_instantiated(self):
         """A fully implemented subclass should work."""
+
         class Concrete(BaseCrawler):
             platform = "test"
 
@@ -40,6 +42,7 @@ class TestBaseCrawler:
 
     def test_locations_defaults_to_empty_list(self):
         """locations should default to [] when not provided."""
+
         class Concrete(BaseCrawler):
             platform = "test"
 
@@ -51,6 +54,7 @@ class TestBaseCrawler:
 
     def test_locations_from_constructor(self):
         """locations should be stored when provided."""
+
         class Concrete(BaseCrawler):
             platform = "test"
 

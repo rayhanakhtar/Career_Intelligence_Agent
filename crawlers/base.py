@@ -45,6 +45,4 @@ class BaseCrawler(ABC):
         Returns:
             A new crawler instance.
         """
-        raise NotImplementedError(
-            f"{cls.__name__} must implement from_registry or be instantiated directly"
-        )
+        raise NotImplementedError(f"{cls.__name__} must implement from_registry or be instantiated directly")

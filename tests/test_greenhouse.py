@@ -1,14 +1,12 @@
 """Unit tests for the Greenhouse crawler module."""
 
-import json
 import responses
 
 from crawlers.greenhouse import (
     GreenhouseCrawler,
-    fetch_jobs,
     _build_job_record,
+    fetch_jobs,
 )
-
 
 SAMPLE_GREENHOUSE_RESPONSE = {
     "jobs": [

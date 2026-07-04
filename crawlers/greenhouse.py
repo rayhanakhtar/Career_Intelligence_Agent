@@ -3,7 +3,7 @@
 import json
 import logging
 import time
-from typing import Any
+from typing import Any, cast
 
 from crawlers.base import BaseCrawler
 from crawlers.utils import get_with_retry
@@ -17,7 +17,7 @@ def _extract_employment_type(raw: dict[str, Any]) -> str:
     """Extract employment type from Greenhouse job metadata."""
     for m in raw.get("metadata") or []:
         if isinstance(m, dict) and m.get("id") == 1:
-            return m.get("value", "")
+            return cast(str, m.get("value", ""))
     return ""
 
 
@@ -27,7 +27,7 @@ def _extract_department(raw: dict[str, Any]) -> str:
     if isinstance(departments, list) and departments:
         first = departments[0]
         if isinstance(first, dict):
-            return first.get("name", "")
+            return cast(str, first.get("name", ""))
     return ""
 
 
@@ -69,7 +69,7 @@ def _fetch_raw_jobs(board_token: str) -> list[dict[str, Any]]:
 
     jobs = data.get("jobs", [])
     logger.info("Fetched %d jobs from Greenhouse board '%s' (%.2fs)", len(jobs), board_token, elapsed)
-    return jobs
+    return cast(list[dict[str, Any]], jobs)
 
 
 def fetch_jobs(board_token: str) -> list[dict[str, Any]]:

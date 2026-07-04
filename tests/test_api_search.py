@@ -1,6 +1,5 @@
 """Tests for the resume search API endpoint."""
 
-import io
 from unittest.mock import patch
 
 from fastapi import status

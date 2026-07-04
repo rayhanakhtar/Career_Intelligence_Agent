@@ -27,20 +27,19 @@ def _parse_jobs_from_html(html: str) -> list[dict[str, str]]:
             try:
                 json_str = text.split("=", 1)[1].strip().rstrip(";")
                 data = json.loads(json_str)
-                job_list = (
-                    data.get("jobs", {})
-                    .get("availableJobs", [])
-                )
+                job_list = data.get("jobs", {}).get("availableJobs", [])
                 for job in job_list:
-                    jobs.append({
-                        "title": job.get("title", ""),
-                        "location": job.get("location", ""),
-                        "description": job.get("description", ""),
-                        "apply_url": f"https://www.metacareers.com/jobs/{job.get('id', '')}",
-                        "department": "",
-                        "employment_type": job.get("employmentType", ""),
-                        "posted_at": job.get("postedDate", ""),
-                    })
+                    jobs.append(
+                        {
+                            "title": job.get("title", ""),
+                            "location": job.get("location", ""),
+                            "description": job.get("description", ""),
+                            "apply_url": f"https://www.metacareers.com/jobs/{job.get('id', '')}",
+                            "department": "",
+                            "employment_type": job.get("employmentType", ""),
+                            "posted_at": job.get("postedDate", ""),
+                        }
+                    )
             except (json.JSONDecodeError, AttributeError):
                 continue
 

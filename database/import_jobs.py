@@ -4,10 +4,9 @@ import argparse
 import json
 import logging
 import sqlite3
-import sys
 
-from database.schema import create_tables
 from database.crud import insert_job
+from database.schema import create_tables
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ def import_json_to_db(db_path: str, json_paths: list[str]) -> int:
     total = 0
     for path in json_paths:
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 records = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.error("Skipping %s: %s", path, e)
@@ -53,9 +52,7 @@ def import_json_to_db(db_path: str, json_paths: list[str]) -> int:
 
 def main() -> None:
     """Entry point for the CLI import script."""
-    parser = argparse.ArgumentParser(
-        description="Import job JSON files into a SQLite database."
-    )
+    parser = argparse.ArgumentParser(description="Import job JSON files into a SQLite database.")
     parser.add_argument(
         "--db",
         default="jobs.db",

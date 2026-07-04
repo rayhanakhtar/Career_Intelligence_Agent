@@ -1,7 +1,6 @@
 """Crawler for Amazon Jobs."""
 
 import logging
-import re
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -31,20 +30,22 @@ def _parse_jobs_from_html(html: str) -> list[dict[str, str]]:
             continue
 
         location = loc_el.get_text(strip=True) if loc_el else ""
-        relative_url = url_el.get("href", "") if url_el else ""
+        relative_url = str(url_el.get("href", "")) if url_el else ""
         apply_url = f"https://www.amazon.jobs{relative_url}" if relative_url.startswith("/") else relative_url
         department = dept_el.get_text(strip=True) if dept_el else ""
         posted_at = date_el.get_text(strip=True) if date_el else ""
 
-        jobs.append({
-            "title": title,
-            "location": location,
-            "description": "",
-            "apply_url": apply_url,
-            "department": department,
-            "employment_type": "",
-            "posted_at": posted_at,
-        })
+        jobs.append(
+            {
+                "title": title,
+                "location": location,
+                "description": "",
+                "apply_url": apply_url,
+                "department": department,
+                "employment_type": "",
+                "posted_at": posted_at,
+            }
+        )
 
     return jobs
 

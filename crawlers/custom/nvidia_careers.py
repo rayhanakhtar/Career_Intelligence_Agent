@@ -27,18 +27,20 @@ def _parse_jobs_from_html(html: str) -> list[dict[str, str]]:
         if not title:
             continue
 
-        href = title_el.get("href", "") if title_el else ""
+        href = str(title_el.get("href", "")) if title_el else ""
         apply_url = href if href.startswith("http") else f"https://nvidia.wd5.myworkdayjobs.com{href}" if href else ""
 
-        jobs.append({
-            "title": title,
-            "location": loc_el.get_text(strip=True) if loc_el else "",
-            "description": "",
-            "apply_url": apply_url,
-            "department": "",
-            "employment_type": "",
-            "posted_at": date_el.get_text(strip=True) if date_el else "",
-        })
+        jobs.append(
+            {
+                "title": title,
+                "location": loc_el.get_text(strip=True) if loc_el else "",
+                "description": "",
+                "apply_url": apply_url,
+                "department": "",
+                "employment_type": "",
+                "posted_at": date_el.get_text(strip=True) if date_el else "",
+            }
+        )
 
     return jobs
 

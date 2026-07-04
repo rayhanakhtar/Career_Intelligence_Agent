@@ -1,8 +1,7 @@
 """CRUD operations for the jobs table."""
 
 import sqlite3
-from typing import Any, Optional
-
+from typing import Any
 
 UPSERT_JOB_SQL = """
 INSERT INTO jobs (title, company, location, description, apply_url,
@@ -87,7 +86,7 @@ def get_all_jobs(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return [_row_to_dict(row) for row in cursor.fetchall()]
 
 
-def get_job_by_id(conn: sqlite3.Connection, job_id: int) -> Optional[dict[str, Any]]:
+def get_job_by_id(conn: sqlite3.Connection, job_id: int) -> dict[str, Any] | None:
     """Retrieve a single job record by its id.
 
     Args:
@@ -113,7 +112,7 @@ def count_jobs(conn: sqlite3.Connection) -> int:
         The job count.
     """
     cursor = conn.execute(SELECT_COUNT_SQL)
-    return cursor.fetchone()[0]
+    return int(cursor.fetchone()[0])
 
 
 def _build_filter_query(
@@ -176,7 +175,11 @@ def get_jobs_filtered(
     select_sql = "SELECT * FROM jobs"
     count_sql = "SELECT COUNT(*) FROM jobs"
     select_sql, count_sql, params = _build_filter_query(
-        select_sql, count_sql, company, location, source,
+        select_sql,
+        count_sql,
+        company,
+        location,
+        source,
     )
 
     select_sql += " ORDER BY posted_at DESC"

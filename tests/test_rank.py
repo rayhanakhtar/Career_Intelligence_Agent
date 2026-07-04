@@ -1,9 +1,6 @@
 """Unit tests for the ranking pipeline."""
 
-import json
 import sqlite3
-import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -72,12 +69,8 @@ def resume_text():
 # Job 0 (bosch AI/ML) should be closest to the resume, Job 2 (wipro frontend) farthest.
 _RNG = np.random.default_rng(42)
 SAMPLE_EMBEDDINGS = _RNG.normal(size=(3, 384)).astype(np.float32)
-SAMPLE_EMBEDDINGS = SAMPLE_EMBEDDINGS / np.linalg.norm(
-    SAMPLE_EMBEDDINGS, axis=1, keepdims=True
-)
-SAMPLE_RESUME_VEC = SAMPLE_EMBEDDINGS[0].copy() + _RNG.normal(
-    scale=0.1, size=384
-).astype(np.float32)
+SAMPLE_EMBEDDINGS = SAMPLE_EMBEDDINGS / np.linalg.norm(SAMPLE_EMBEDDINGS, axis=1, keepdims=True)
+SAMPLE_RESUME_VEC = SAMPLE_EMBEDDINGS[0].copy() + _RNG.normal(scale=0.1, size=384).astype(np.float32)
 SAMPLE_RESUME_VEC = SAMPLE_RESUME_VEC / np.linalg.norm(SAMPLE_RESUME_VEC)
 
 
@@ -147,7 +140,7 @@ class TestRankPipeline:
         db_path = str(tmp_path / "test.db")
         self._make_file_db(db_path, db_with_jobs)
 
-        from pipeline.rank import rank_jobs, LOCATION_BOOST
+        from pipeline.rank import rank_jobs
 
         results = rank_jobs(
             db_path=db_path,
@@ -180,14 +173,20 @@ class TestRankPipeline:
         from pipeline.rank import rank_jobs
 
         results_no_loc = rank_jobs(
-            db_path=db_path, resume_text=resume_text, top_k=3,
+            db_path=db_path,
+            resume_text=resume_text,
+            top_k=3,
         )
         results_none = rank_jobs(
-            db_path=db_path, resume_text=resume_text, top_k=3,
+            db_path=db_path,
+            resume_text=resume_text,
+            top_k=3,
             preferred_locations=None,
         )
         results_empty = rank_jobs(
-            db_path=db_path, resume_text=resume_text, top_k=3,
+            db_path=db_path,
+            resume_text=resume_text,
+            top_k=3,
             preferred_locations=[],
         )
 
@@ -205,7 +204,9 @@ class TestRankPipeline:
         from pipeline.rank import rank_jobs
 
         results = rank_jobs(
-            db_path=db_path, resume_text=resume_text, top_k=5,
+            db_path=db_path,
+            resume_text=resume_text,
+            top_k=5,
             preferred_locations=["Bengaluru"],
         )
         assert results == []

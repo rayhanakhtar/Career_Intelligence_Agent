@@ -2,7 +2,6 @@
 
 import logging
 import time
-from typing import Any, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -45,7 +44,7 @@ def get_with_retry(
     max_retries: int = _DEFAULT_MAX_RETRIES,
     timeout: int = _DEFAULT_TIMEOUT,
     delay: float = 1.0,
-) -> Optional[requests.Response]:
+) -> requests.Response | None:
     """Perform a GET request with retry logic and polite delay.
 
     Uses urllib3 Retry for transient failures (429, 5xx), plus an additional

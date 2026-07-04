@@ -85,7 +85,13 @@ class TestCustomScraperFromRegistry:
     """Tests for from_registry factory method."""
 
     def test_google_from_registry(self):
-        entry = {"id": "google", "company": "Google", "platform": "google_careers", "enabled": True, "locations": ["Bengaluru"]}
+        entry = {
+            "id": "google",
+            "company": "Google",
+            "platform": "google_careers",
+            "enabled": True,
+            "locations": ["Bengaluru"],
+        }
         c = GoogleCrawler.from_registry(entry)
         assert isinstance(c, GoogleCrawler)
         assert c.company_id == "google"
@@ -129,7 +135,13 @@ class TestCustomScraperFromRegistry:
         assert isinstance(c, IntelCrawler)
 
     def test_qualcomm_from_registry(self):
-        entry = {"id": "qualcomm", "company": "Qualcomm", "platform": "qualcomm_careers", "enabled": True, "locations": []}
+        entry = {
+            "id": "qualcomm",
+            "company": "Qualcomm",
+            "platform": "qualcomm_careers",
+            "enabled": True,
+            "locations": [],
+        }
         c = QualcommCrawler.from_registry(entry)
         assert isinstance(c, QualcommCrawler)
 

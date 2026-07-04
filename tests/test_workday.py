@@ -1,5 +1,6 @@
 """Unit tests for the Workday crawler module."""
 
+from typing import Any
 from unittest.mock import patch
 
 from crawlers.workday import WorkdayCrawler, _build_job_record, fetch_jobs
@@ -30,7 +31,7 @@ SAMPLE_WORKDAY_RESPONSE = {
     ],
 }
 
-SINGLE_JOB_RAW = SAMPLE_WORKDAY_RESPONSE["jobPostings"][0]
+SINGLE_JOB_RAW: dict[str, Any] = SAMPLE_WORKDAY_RESPONSE["jobPostings"][0]  # type: ignore[index]
 
 
 class TestWorkdayBuildJobRecord:
@@ -43,7 +44,9 @@ class TestWorkdayBuildJobRecord:
         assert record["company"] == "Microsoft"
         assert record["location"] == "Bengaluru, India"
         assert record["description"] == ""
-        assert record["apply_url"] == "https://Microsoft.wd1.myworkdayjobs.com/Microsoft/job/123456/software-engineer-ii"
+        assert (
+            record["apply_url"] == "https://Microsoft.wd1.myworkdayjobs.com/Microsoft/job/123456/software-engineer-ii"
+        )
         assert record["department"] == ""
         assert record["employment_type"] == ""
         assert record["source"] == "workday"

@@ -1,6 +1,5 @@
 """Unit tests for the HTTP utilities module."""
 
-import pytest
 import requests
 import responses
 

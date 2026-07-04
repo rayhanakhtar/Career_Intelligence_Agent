@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -64,7 +64,7 @@ def _load_yaml(path: str) -> list[dict[str, Any]]:
 
     Expects a top-level ``companies`` key containing a list.
     """
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if isinstance(data, dict):
         data = data.get("companies", [])
@@ -76,8 +76,8 @@ def _load_yaml(path: str) -> list[dict[str, Any]]:
 
 def _load_json(path: str) -> list[dict[str, Any]]:
     """Load companies from a JSON file (top-level list)."""
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    with open(path, encoding="utf-8") as f:
+        return cast(list[dict[str, Any]], json.load(f))
 
 
 def load_companies(path: str | None = None) -> list[dict[str, Any]]:
@@ -94,10 +94,7 @@ def load_companies(path: str | None = None) -> list[dict[str, Any]]:
     """
     p = _resolve_registry_path(path)
     try:
-        if p.endswith((".yml", ".yaml")):
-            data = _load_yaml(p)
-        else:
-            data = _load_json(p)
+        data = _load_yaml(p) if p.endswith((".yml", ".yaml")) else _load_json(p)
         logger.info("Loaded %d companies from %s", len(data), p)
         return data
     except FileNotFoundError:

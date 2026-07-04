@@ -40,7 +40,7 @@ def _extract_pdf(content: bytes) -> str:
     try:
         import fitz  # PyMuPDF
     except ImportError:
-        raise ValueError("PyMuPDF is required for PDF extraction")
+        raise ValueError("PyMuPDF is required for PDF extraction") from None
 
     try:
         doc = fitz.open(stream=content, filetype="pdf")
@@ -49,7 +49,7 @@ def _extract_pdf(content: bytes) -> str:
         return text.strip()
     except Exception as e:
         logger.error("PDF extraction failed: %s", e)
-        raise ValueError(f"Failed to extract text from PDF: {e}")
+        raise ValueError(f"Failed to extract text from PDF: {e}") from e
 
 
 def _extract_docx(content: bytes) -> str:
@@ -57,13 +57,14 @@ def _extract_docx(content: bytes) -> str:
     try:
         from docx import Document
     except ImportError:
-        raise ValueError("python-docx is required for DOCX extraction")
+        raise ValueError("python-docx is required for DOCX extraction") from None
 
     try:
         import io
+
         doc = Document(io.BytesIO(content))
         text = "\n".join(p.text for p in doc.paragraphs)
         return text.strip()
     except Exception as e:
         logger.error("DOCX extraction failed: %s", e)
-        raise ValueError(f"Failed to extract text from DOCX: {e}")
+        raise ValueError(f"Failed to extract text from DOCX: {e}") from e

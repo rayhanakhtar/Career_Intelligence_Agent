@@ -4,9 +4,8 @@ import sqlite3
 
 import pytest
 
+from database.crud import count_jobs, get_all_jobs, get_job_by_id, insert_job
 from database.schema import create_tables
-from database.crud import insert_job, get_all_jobs, get_job_by_id, count_jobs
-
 
 SAMPLE_RECORD = {
     "title": "AI/ML Engineer Intern",

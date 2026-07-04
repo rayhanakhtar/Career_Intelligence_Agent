@@ -23,7 +23,7 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "jobs.db")
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """Start the scheduler on boot, shut down on exit."""
     scheduler = CrawlScheduler(db_path=DATABASE_PATH)
     scheduler.start()

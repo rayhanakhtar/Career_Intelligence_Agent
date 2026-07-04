@@ -30,15 +30,17 @@ def _parse_jobs_from_html(html: str) -> list[dict[str, str]]:
                 for match in matches:
                     try:
                         data = json.loads(match)
-                        jobs.append({
-                            "title": data.get("title", ""),
-                            "location": data.get("location", ""),
-                            "description": data.get("description", ""),
-                            "apply_url": f"https://jobs.apple.com{data.get('url', '')}" if data.get("url") else "",
-                            "department": data.get("team", ""),
-                            "employment_type": data.get("employmentType", ""),
-                            "posted_at": data.get("postDate", ""),
-                        })
+                        jobs.append(
+                            {
+                                "title": data.get("title", ""),
+                                "location": data.get("location", ""),
+                                "description": data.get("description", ""),
+                                "apply_url": f"https://jobs.apple.com{data.get('url', '')}" if data.get("url") else "",
+                                "department": data.get("team", ""),
+                                "employment_type": data.get("employmentType", ""),
+                                "posted_at": data.get("postDate", ""),
+                            }
+                        )
                     except json.JSONDecodeError:
                         continue
             except (ValueError, AttributeError):

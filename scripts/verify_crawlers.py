@@ -1,10 +1,8 @@
 """End-to-end verification script — tests each crawler platform against a real API."""
 
-import json
 import logging
 import sys
 import time
-from typing import Any
 
 import requests
 
@@ -75,7 +73,11 @@ def verify_workday(subdomain: str, tenant: str, label: str):
         check(f"has jobPostings ({label})", isinstance(jobs, list), f"{len(jobs)} jobs")
         if jobs:
             check(f"first job has title ({label})", bool(jobs[0].get("title")), f"title='{jobs[0].get('title', '')}'")
-            check(f"first job has externalPath ({label})", bool(jobs[0].get("externalPath")), f"path='{jobs[0].get('externalPath', '')}'")
+            check(
+                f"first job has externalPath ({label})",
+                bool(jobs[0].get("externalPath")),
+                f"path='{jobs[0].get('externalPath', '')}'",
+            )
     else:
         logger.info("  Response body: %s", r.text[:300])
 
