@@ -32,6 +32,7 @@ class PlaywrightPool:
         self._playwright: Any = None
         self._browsers: list[Any] = []
         self._semaphore = asyncio.Semaphore(max_browsers)
+        self._rr_index = 0
         self._closed = False
 
     async def _ensure_playwright(self) -> None:
@@ -52,6 +53,11 @@ class PlaywrightPool:
             browser = await self._playwright.chromium.launch(headless=True)
             self._browsers.append(browser)
         logger.info("Launched %d Playwright browser(s)", len(self._browsers))
+
+    def _next_browser(self) -> Any:
+        b = self._browsers[self._rr_index]
+        self._rr_index = (self._rr_index + 1) % len(self._browsers)
+        return b
 
     async def fetch_page(
         self,
@@ -80,7 +86,7 @@ class PlaywrightPool:
             return None
 
         async with self._semaphore:
-            browser = self._browsers[0]  # Round-robin from pool.
+            browser = self._next_browser()
             page = await browser.new_page()
             try:
                 await page.goto(url, timeout=timeout, wait_until=wait_until)
@@ -89,6 +95,61 @@ class PlaywrightPool:
                 return html
             except Exception as e:
                 logger.warning("Playwright navigation failed for %s: %s", url, e)
+                return None
+            finally:
+                await page.close()
+
+    async def run_in_page(
+        self,
+        handler: Any,
+        url: str | None = None,
+        timeout: int = 30_000,
+        wait_until: str = "networkidle",
+    ) -> Any | None:
+        """Run an async handler with a page from the pool.
+
+        The handler receives a Playwright ``Page`` instance and can
+        perform arbitrary interactions (navigation, evaluate, click,
+        screenshot, network interception, etc.).
+
+        Usage::
+
+            result = await pool.run_in_page(
+                url="https://example.com",
+                handler=lambda page: page.evaluate("1 + 1"),
+            )
+
+        Args:
+            handler: An async callable ``async def handler(page) -> Any``
+                that receives a Playwright ``Page`` and returns a result.
+            url: Optional URL to navigate to *before* calling the handler.
+                If ``None``, the handler is responsible for navigation.
+            timeout: Navigation timeout in milliseconds (default 30s).
+                Only used when *url* is provided.
+            wait_until: Playwright ``waitUntil`` strategy (default
+                ``"networkidle"``).  Only used when *url* is provided.
+
+        Returns:
+            The return value of *handler*, or ``None`` on failure.
+        """
+        if self._closed:
+            logger.warning("PlaywrightPool is closed")
+            return None
+
+        await self._ensure_playwright()
+        if not self._playwright:
+            return None
+
+        async with self._semaphore:
+            browser = self._next_browser()
+            page = await browser.new_page()
+            try:
+                if url:
+                    await page.goto(url, timeout=timeout, wait_until=wait_until)
+                result = await handler(page)
+                return result
+            except Exception as e:
+                logger.warning("run_in_page failed: %s", e)
                 return None
             finally:
                 await page.close()

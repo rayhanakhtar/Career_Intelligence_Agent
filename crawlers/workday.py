@@ -2,11 +2,8 @@
 
 Strategy (in order):
 1. Try ``requests`` directly (fast path — some tenants bypass WAF).
-2. On failure (422/406/403), use Playwright to load the careers page,
-   extract Cloudflare/Workday cookies, then use ``requests.Session``
-   with those cookies for paginated API calls.
-3. If the CXS API still fails, attempt to parse job data from the
-   rendered Playwright page HTML.
+2. On failure, use a single Playwright session to discover the career
+   site and fetch all jobs via browser ``fetch`` (``page.evaluate``).
 """
 
 import asyncio
@@ -25,37 +22,28 @@ logger = logging.getLogger(__name__)
 _PAGE_SIZE = 200
 _MAX_PAGE_RETRIES = 3
 
-# Common career site name patterns tried for each tenant.
 _SITE_PATTERNS = [
     "{tenant}ExternalCareerSite",
     "External",
     "{tenant}",
     "Careers",
-    f"External_Career_Site",
+    "External_Career_Site",
+    "{tenant}_External_Career_Site",
+    "{tenant}_Careers",
+    "CareerSite",
 ]
 
 
 def _build_workday_host(tenant: str, subdomain: str) -> str:
-    """Build the correct Workday hostname.
-
-    Correct format: ``{tenant}.{subdomain}.myworkdayjobs.com``
-    Old (broken) format: ``{subdomain}.myworkdayjobs.com``
-    """
     return f"{tenant}.{subdomain}.myworkdayjobs.com"
 
 
 def _build_api_url(tenant: str, subdomain: str, site: str) -> str:
-    """Build the CXS jobs API URL.
-
-    Correct format::
-        https://{tenant}.{subdomain}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
-    """
     host = _build_workday_host(tenant, subdomain)
     return f"https://{host}/wday/cxs/{tenant}/{site}/jobs"
 
 
 def _build_careers_url(tenant: str, subdomain: str, site: str | None = None) -> str:
-    """Build the public career page URL for a Workday tenant."""
     host = _build_workday_host(tenant, subdomain)
     if site:
         return f"https://{host}/{site}"
@@ -66,19 +54,6 @@ def _fetch_page_requests(
     tenant: str, subdomain: str, site: str, offset: int = 0, limit: int = _PAGE_SIZE,
     session: requests.Session | None = None,
 ) -> dict[str, Any] | None:
-    """Fetch a single page of jobs via ``requests``.
-
-    Args:
-        tenant: Workday tenant name.
-        subdomain: Workday subdomain (e.g. ``"wd1"``).
-        site: Career site name (e.g. ``"NvidiaExternalCareerSite"``).
-        offset: Pagination offset.
-        limit: Page size.
-        session: Optional ``requests.Session`` (for cookie injection).
-
-    Returns:
-        Parsed JSON response, or ``None`` on failure.
-    """
     url = _build_api_url(tenant, subdomain, site)
     payload = {"limit": limit, "offset": offset, "searchText": ""}
     headers = {
@@ -124,15 +99,6 @@ def _fetch_page_requests(
 def _discover_site(
     tenant: str, subdomain: str,
 ) -> str | None:
-    """Try to discover the correct career site name for a Workday tenant.
-
-    Tries common patterns first, then falls back to a Playwright
-    page load that intercepts the SPA's own API call.
-
-    Returns:
-        The discovered site name, or ``None`` if not found.
-    """
-    # Try common patterns via direct requests first.
     for pattern in _SITE_PATTERNS:
         site = pattern.format(tenant=tenant)
         url = _build_api_url(tenant, subdomain, site)
@@ -153,12 +119,11 @@ def _discover_site(
         except requests.RequestException:
             continue
 
-    logger.info("Site discovery via patterns failed for %s/%s — will try Playwright fallback", subdomain, tenant)
+    logger.info("Site discovery via patterns failed for %s/%s", subdomain, tenant)
     return None
 
 
 def _build_job_record(job: dict[str, Any], display_name: str, tenant: str, subdomain: str, site: str) -> dict[str, Any]:
-    """Normalise a raw Workday job dict into the standard job record format."""
     ext_path = job.get("externalPath") or ""
     if ext_path.startswith("/"):
         host = _build_workday_host(tenant, subdomain)
@@ -166,7 +131,6 @@ def _build_job_record(job: dict[str, Any], display_name: str, tenant: str, subdo
     else:
         apply_url = ""
 
-    # Extract job ID from bulletFields or other fields.
     bullet_fields = job.get("bulletFields") or []
     source_id = str(bullet_fields[0]) if bullet_fields else str(job.get("jobPostingId") or job.get("id") or "")
 
@@ -184,15 +148,171 @@ def _build_job_record(job: dict[str, Any], display_name: str, tenant: str, subdo
     }
 
 
-def _fetch_with_playwright_evaluate(
-    tenant: str, subdomain: str, site: str,
-) -> list[dict[str, Any]] | None:
-    """Use Playwright to load the careers page, then call CXS API via browser
-    ``fetch`` inside ``page.evaluate``.
+# ── Playwright internal helpers ──────────────────────────────────────────────
 
-    This avoids HTTP 400 errors caused by TLS fingerprinting differences
-    between ``requests`` and a real browser — even when the same cookies
-    are forwarded.
+
+async def _is_maintenance_page(page: Any) -> bool:
+    """Check if the page is the Workday maintenance/unavailable page."""
+    try:
+        title = await page.title()
+        if "currently unavailable" in title.lower():
+            return True
+        url = page.url
+        if "maintenance" in url.lower():
+            return True
+        return False
+    except Exception:
+        return False
+
+
+async def _check_page_has_jobs(page: Any) -> bool:
+    """Rough sanity check — does the page look like a Workday careers page?"""
+    if await _is_maintenance_page(page):
+        return False
+    try:
+        result = await page.evaluate("""
+            () => {
+                const hasAutomation = document.querySelectorAll('[data-automation-id]').length > 0;
+                const title = document.title || '';
+                const hasWorkdayTitle = title.includes('Workday') || title.includes('Careers') || title.includes('Jobs');
+                const hasJobElements = document.querySelectorAll('[class*="job"], [id*="job"]').length > 3;
+                return hasAutomation || hasWorkdayTitle || hasJobElements;
+            }
+        """)
+        return bool(result)
+    except Exception:
+        return False
+
+
+async def _discover_site_on_page(page: Any, tenant: str, subdomain: str) -> str | None:
+    """Discover the career site name for a Workday tenant.
+
+    Strategy:
+    1. Navigate to the base domain.  Workday often redirects to a site path
+       (e.g. ``/Microsoft``).  The redirect target is the site name.
+    2. If no redirect, try each URL pattern from ``_SITE_PATTERNS`` and
+       check whether the page loads successfully with Workday content.
+    """
+    base_url = f"https://{tenant}.{subdomain}.myworkdayjobs.com/"
+
+    # Step 1 — navigate to base URL and capture any redirect path.
+    try:
+        resp = await page.goto(base_url, timeout=20000, wait_until="domcontentloaded")
+        await asyncio.sleep(3)
+        final_url = page.url
+        # If the final URL has a path component beyond "/", use it as site.
+        path = final_url.rstrip("/").split(".myworkdayjobs.com")[-1]
+        if path and path != "/":
+            candidate = path.lstrip("/")
+            if candidate and await _check_page_has_jobs(page):
+                logger.info("Discovered Workday site '%s' for %s/%s via redirect", candidate, subdomain, tenant)
+                return candidate
+    except Exception:
+        pass
+
+    # Step 2 — try each pattern URL.
+    for pattern in _SITE_PATTERNS:
+        candidate = pattern.format(tenant=tenant)
+        url = f"https://{tenant}.{subdomain}.myworkdayjobs.com/{candidate}"
+        try:
+            await page.goto(url, timeout=15000, wait_until="domcontentloaded")
+            await asyncio.sleep(2)
+            # If navigation didn't throw and page looks like Workday.
+            if await _check_page_has_jobs(page):
+                logger.info("Discovered Workday site '%s' for %s/%s via pattern '%s'", candidate, subdomain, tenant, pattern)
+                return candidate
+        except Exception:
+            continue
+
+    return None
+
+
+async def _extract_csrf_token(page: Any) -> str:
+    """Extract ``CALYPSO_CSRF_TOKEN`` from ``document.cookie``."""
+    try:
+        raw = await page.evaluate("() => document.cookie")
+        if not raw:
+            return ""
+        for part in raw.split("; "):
+            if part.startswith("CALYPSO_CSRF_TOKEN="):
+                return part.split("=", 1)[1]
+    except Exception:
+        pass
+    return ""
+
+
+async def _fetch_jobs_on_page(page: Any, tenant: str, subdomain: str, site: str) -> list[dict[str, Any]] | None:
+    """Fetch all jobs via ``page.evaluate`` using browser ``fetch``.
+
+    Automatically extracts and includes the ``x-calypso-csrf-token``
+    header required by the Workday CXS API.
+    """
+    api_url = _build_api_url(tenant, subdomain, site)
+    csrf_token = await _extract_csrf_token(page)
+    page_size = _PAGE_SIZE
+
+    script = f"""
+        (async () => {{
+            const allJobs = [];
+            let offset = 0;
+            let total = Infinity;
+            const pageSize = {json.dumps(page_size)};
+            const apiUrl = {json.dumps(api_url)};
+            const headers = {json.dumps({
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "x-calypso-csrf-token": csrf_token,
+            })};
+
+            while (offset < total) {{
+                try {{
+                    const resp = await fetch(apiUrl, {{
+                        method: "POST",
+                        headers: headers,
+                        body: JSON.stringify({{
+                            limit: pageSize,
+                            offset: offset,
+                            searchText: ""
+                        }})
+                    }});
+                    if (!resp.ok) break;
+                    const data = await resp.json();
+                    const jobs = data.jobPostings || [];
+                    allJobs.push(...jobs);
+                    total = data.total || 0;
+                    offset += pageSize;
+                }} catch (e) {{
+                    break;
+                }}
+            }}
+            return allJobs;
+        }})()
+    """
+
+    try:
+        all_jobs = await page.evaluate(script)
+        if isinstance(all_jobs, list) and len(all_jobs) > 0:
+            return all_jobs
+        logger.debug("page.evaluate returned no jobs for %s/%s (site=%s)", subdomain, tenant, site)
+        return None
+    except Exception as e:
+        logger.warning("page.evaluate failed for %s/%s: %s", subdomain, tenant, e)
+        return None
+
+
+def _fetch_workday_playwright(
+    tenant: str, subdomain: str, site: str | None = None,
+) -> list[dict[str, Any]] | None:
+    """Single Playwright session: discover site (if needed) and fetch all jobs.
+
+    Launches one browser, navigates the careers page, optionally discovers
+    the correct site name, calls the CXS API via ``page.evaluate``, and
+    closes the browser — all in one session.
+
+    Args:
+        tenant: Workday tenant name.
+        subdomain: Workday subdomain (e.g. ``"wd1"``).
+        site: Career site name. If ``None``, attempt discovery.
 
     Returns:
         A list of raw job dicts, or ``None`` on failure.
@@ -200,7 +320,7 @@ def _fetch_with_playwright_evaluate(
     try:
         from playwright.async_api import async_playwright
     except ImportError:
-        logger.warning("Playwright not available — cannot use evaluate approach")
+        logger.warning("Playwright not available")
         return None
 
     async def _run() -> list[dict[str, Any]] | None:
@@ -209,188 +329,73 @@ def _fetch_with_playwright_evaluate(
             context = await browser.new_context()
             page = await context.new_page()
 
-            careers_url = _build_careers_url(tenant, subdomain, site)
-            api_url = _build_api_url(tenant, subdomain, site)
-            logger.info("Playwright evaluate: loading %s", careers_url)
+            discovered_site = site
 
+            if not discovered_site:
+                discovered_site = await _discover_site_on_page(page, tenant, subdomain)
+                if not discovered_site:
+                    logger.error("Could not discover career site for Workday %s/%s", subdomain, tenant)
+                    await browser.close()
+                    return None
+
+            # Navigate to the correct careers page (if not already there).
+            careers_url = _build_careers_url(tenant, subdomain, discovered_site)
             try:
-                await page.goto(careers_url, timeout=60000, wait_until="networkidle")
-                await asyncio.sleep(3)
+                await page.goto(careers_url, timeout=30000, wait_until="networkidle")
+                await asyncio.sleep(2)
             except Exception as e:
-                logger.warning("Playwright navigation failed for %s: %s", careers_url, e)
+                logger.warning("Playwright navigation to careers page failed for %s: %s", careers_url, e)
                 await browser.close()
                 return None
 
-            # Call the CXS API from inside the browser context using native fetch.
-            # This automatically sends cookies and passes Cloudflare/TLS checks.
-            script = f"""
-                (async () => {{
-                    const allJobs = [];
-                    let offset = 0;
-                    let total = Infinity;
-                    const pageSize = {json.dumps(_PAGE_SIZE)};
-                    const apiUrl = {json.dumps(api_url)};
-
-                    while (offset < total) {{
-                        try {{
-                            const resp = await fetch(apiUrl, {{
-                                method: "POST",
-                                headers: {{
-                                    "Content-Type": "application/json",
-                                    "Accept": "application/json"
-                                }},
-                                body: JSON.stringify({{
-                                    limit: pageSize,
-                                    offset: offset,
-                                    searchText: ""
-                                }})
-                            }});
-                            if (!resp.ok) break;
-                            const data = await resp.json();
-                            const jobs = data.jobPostings || [];
-                            allJobs.push(...jobs);
-                            total = data.total || 0;
-                            offset += pageSize;
-                        }} catch (e) {{
-                            break;
-                        }}
-                    }}
-                    return allJobs;
-                }})()
-            """
-
-            try:
-                all_jobs = await page.evaluate(script)
-                if isinstance(all_jobs, list) and len(all_jobs) > 0:
-                    logger.info(
-                        "Fetched %d jobs from Workday %s/%s via Playwright evaluate",
-                        len(all_jobs), subdomain, tenant,
-                    )
-                    await browser.close()
-                    return all_jobs
-                logger.warning(
-                    "No jobs returned from page.evaluate for %s/%s (got %s)",
-                    subdomain, tenant, type(all_jobs).__name__,
-                )
-            except Exception as e:
-                logger.warning("page.evaluate failed for %s/%s: %s", subdomain, tenant, e)
+            jobs = await _fetch_jobs_on_page(page, tenant, subdomain, discovered_site)
 
             await browser.close()
+
+            if jobs:
+                logger.info("Fetched %d jobs from Workday %s/%s via Playwright", len(jobs), subdomain, tenant)
+                return jobs
+
+            logger.warning("No jobs returned for Workday %s/%s (site=%s)", subdomain, tenant, discovered_site)
             return None
 
     return asyncio.run(_run())
 
 
-def _discover_site_playwright(
-    tenant: str, subdomain: str,
-) -> str | None:
-    """Discover the career site name for a Workday tenant using Playwright.
-
-    Navigates to the base careers hostname and intercepts API calls made
-    by the SPA to sniff the correct ``site`` path segment.
-
-    Returns:
-        The discovered site name, or ``None`` if not found.
-    """
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        logger.warning("Playwright not available — cannot discover site")
-        return None
-
-    discovered: str | None = None
-
-    async def _run() -> str | None:
-        nonlocal discovered
-        async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
-            context = await browser.new_context()
-            page = await context.new_page()
-
-            # Intercept API calls to extract site name from URL path.
-            async def _on_response(response):
-                nonlocal discovered
-                if discovered is not None:
-                    return
-                url = response.url
-                match = re.search(rf"/wday/cxs/{re.escape(tenant)}/([^/]+)/jobs", url)
-                if match:
-                    discovered = match.group(1)
-
-            page.on("response", _on_response)
-
-            # Try the base domain first (may redirect to a site).
-            base_url = f"https://{tenant}.{subdomain}.myworkdayjobs.com/"
-            try:
-                await page.goto(base_url, timeout=30000, wait_until="networkidle")
-                await asyncio.sleep(5)
-            except Exception:
-                pass
-
-            if discovered:
-                logger.info("Discovered Workday site '%s' for %s/%s via Playwright (base)", discovered, subdomain, tenant)
-                await browser.close()
-                return discovered
-
-            # Try common patterns by navigating directly.
-            for pattern in _SITE_PATTERNS:
-                site = pattern.format(tenant=tenant)
-                url = f"https://{tenant}.{subdomain}.myworkdayjobs.com/{site}"
-                try:
-                    await page.goto(url, timeout=30000, wait_until="networkidle")
-                    await asyncio.sleep(5)
-                    if discovered:
-                        logger.info("Discovered Workday site '%s' for %s/%s via Playwright (pattern: %s)", discovered, subdomain, tenant, pattern)
-                        await browser.close()
-                        return discovered
-                except Exception:
-                    continue
-
-            logger.info("Site discovery via Playwright failed for %s/%s — tried %d patterns", subdomain, tenant, len(_SITE_PATTERNS))
-            await browser.close()
-            return None
-
-    return asyncio.run(_run())
+# ── Public API ───────────────────────────────────────────────────────────────
 
 
 def fetch_jobs(tenant: str, subdomain: str, site: str | None = None, use_playwright: bool = False) -> list[dict[str, Any]]:
     """Fetch all active jobs from a Workday tenant.
 
     Strategy:
-    1. If *use_playwright* is ``True``, try Playwright-based site discovery
-       then call the CXS API via ``page.evaluate`` (browser ``fetch``).
+    1. If *use_playwright* is ``True``, go directly to the single-session
+       Playwright approach (site discovery + API calls in one browser).
     2. Otherwise try ``requests`` directly first, then fall back to Playwright.
-    3. If site is unknown, attempt auto-discovery (requests patterns first,
-       then Playwright-based intercept if available).
+    3. If site is unknown, attempt auto-discovery.
 
     Args:
         tenant: Workday tenant name.
         subdomain: Workday subdomain (e.g. ``"wd1"``, ``"wd5"``).
         site: Career site name. If ``None``, auto-discover.
-        use_playwright: Skip ``requests`` path and go directly to Playwright
-            ``page.evaluate`` approach.
+        use_playwright: Skip ``requests`` path and go directly to Playwright.
 
     Returns:
         A list of raw job dicts (before ``_build_job_record`` normalisation).
     """
-    # Auto-discover site if not provided.
+    if use_playwright:
+        all_jobs = _fetch_workday_playwright(tenant, subdomain, site)
+        if all_jobs is not None:
+            return all_jobs
+        logger.error("Playwright approach failed for Workday %s/%s", subdomain, tenant)
+        return []
+
     if not site:
-        if use_playwright:
-            site = _discover_site_playwright(tenant, subdomain)
-        else:
-            site = _discover_site(tenant, subdomain)
+        site = _discover_site(tenant, subdomain)
         if not site:
             logger.error("Could not discover career site for Workday %s/%s", subdomain, tenant)
             return []
 
-    if use_playwright:
-        all_jobs = _fetch_with_playwright_evaluate(tenant, subdomain, site)
-        if all_jobs is not None:
-            return all_jobs
-        logger.error("Playwright evaluate approach failed for Workday %s/%s (site=%s)", subdomain, tenant, site)
-        return []
-
-    # Fast path: try requests directly.
     data = _fetch_page_requests(tenant, subdomain, site, offset=0)
     if data is not None:
         job_postings = data.get("jobPostings")
@@ -408,9 +413,8 @@ def fetch_jobs(tenant: str, subdomain: str, site: str | None = None, use_playwri
             logger.info("Fetched %d jobs from Workday %s/%s via requests", len(all_jobs), subdomain, tenant)
             return all_jobs
 
-    # Fallback: try Playwright evaluate approach.
-    logger.info("Requests path failed for Workday %s/%s — trying Playwright evaluate", subdomain, tenant)
-    all_jobs = _fetch_with_playwright_evaluate(tenant, subdomain, site)
+    logger.info("Requests path failed for Workday %s/%s — trying Playwright", subdomain, tenant)
+    all_jobs = _fetch_workday_playwright(tenant, subdomain, site)
     if all_jobs is not None:
         return all_jobs
 

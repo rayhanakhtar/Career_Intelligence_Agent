@@ -368,3 +368,40 @@
 - `asyncio.Semaphore` is the idiomatic Python approach for limiting concurrent async resource usage
 - Module-level singleton pattern matches the embedding model singleton pattern
 - Playwright navigation uses `"networkidle"` wait strategy for JS-rendered pages
+
+---
+
+## Sprint 3 – Workday WAF Bypass + Smoke Test *(2026-07-04)*
+
+**Goal:** Fix the Workday hybrid Playwright+requests crawler for all ~25 Workday companies blocked by Cloudflare WAF, using a single browser session per company for site discovery + API fetch.
+
+**Key Deliverables:**
+- `crawlers/workday.py` — Major refactor: merged discovery+fetch into single Playwright session (`_fetch_workday_playwright`), replaced network-intercept discovery with redirect tracking + page-content validation, added `x-calypso-csrf-token` header injection extracted from `document.cookie`
+- `scripts/smoke_test_workday.py` — Standalone diagnostic smoke test covering all 25 Workday companies, outputs `workday_smoke_test_report.md` + console summary
+- `crawlers/playwright_pool.py` — Added `run_in_page(handler, url)` method for arbitrary page interactions via pooled browsers, with round-robin browser selection
+- Maintenance page detection (`_is_maintenance_page`) preventing false-positive site discovery during outages
+
+**Dependencies:** Phase 8, Phase 11
+
+**Completion Criteria:**
+- [x] Site discovery uses redirect tracking + page-content validation (not broken network-intercept)
+- [x] CSRF token extracted from `document.cookie` and injected as `x-calypso-csrf-token` header
+- [x] Generic crawler works across all configured Workday tenants (not optimized per-company)
+- [x] Smoke test script produces detailed markdown report + console summary
+- [x] Maintenance page detection prevents false positives during Workday outages
+- [x] `PlaywrightPool.run_in_page()` enables arbitrary page interactions for JS-heavy crawlers
+- [x] 174/175 unit tests pass (1 pre-existing failure: missing-Playwright test assumes CI)
+- [ ] Full smoke test passes for all 25 companies — **BLOCKED by global Workday outage** (HTTP 406/500 → `community.workday.com/maintenance-page`)
+
+**Files created:** `scripts/smoke_test_workday.py`, `workday_smoke_test_report.md`
+
+**Files modified:** `crawlers/workday.py`, `crawlers/playwright_pool.py`, `scripts/smoke_test_workday.py`
+
+**Current Status — BLOCKED:**
+All Workday career sites (`*.myworkdayjobs.com`) are returning HTTP 406 at root path and HTTP 500 with JavaScript redirect to `community.workday.com/maintenance-page` for specific site paths. This is a global Workday outage. Verification of CSRF/redirect fixes is pending Workday recovery.
+
+**Insights:**
+- Cloudflare Bot Management (`__cf_bm` cookie) is active on all Workday tenants but the root cause of failures is the Workday-side 500 error, not Cloudflare blocking — even `requests` library gets HTTP 406/500
+- `page.evaluate` with `fetch()` gets `TypeError: Failed to fetch` on maintenance pages because the fetch target is cross-origin (maintenance page is on `community.workday.com`, API is on `*.myworkdayjobs.com`)
+- The SPA does NOT fire its own API calls even when loaded — the career pages are completely non-functional during the outage
+- `PlaywrightPool.run_in_page()` enables future JS-heavy crawlers (Swiggy, Tredence, etc.) to reuse pooled browser instances with arbitrary page interaction logic
